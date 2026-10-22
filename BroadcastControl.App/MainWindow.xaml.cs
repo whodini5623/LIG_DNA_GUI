@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private const int EoUdpPort = 6000;
     private const int IrUdpPort = 6001;
     private const int MobileAlertPort = 8088;
+    private const int OverlayCacheLimit = 48;
     private const string DefaultRecordedVideoUrl = "http://192.168.3.143:8090/";
     private const string RecordedVideoCacheFolderName = "LIG_DNA_GUI_recorded_videos";
     private const double RecordedVideoMiniMapWidth = 120;
@@ -54,14 +55,8 @@ public partial class MainWindow : Window
 
     private bool _isDraggingZoom;
     private Point _lastZoomDragPoint;
-    private bool _hasReceivedEoFrame;
-    private bool _hasReceivedIrFrame;
     private bool _isFullscreenMode = true;
-    private ReceivedVideoFrame? _latestEoFrame;
-    private ReceivedVideoFrame? _latestIrFrame;
     private string? _lastStatusSignature;
-    private readonly Dictionary<uint, ReceivedVideoFrame> _eoFrameCache = new();
-    private readonly Dictionary<uint, ReceivedVideoFrame> _irFrameCache = new();
     private readonly Dictionary<uint, DetectionPacket> _eoDetectionCache = new();
     private readonly Dictionary<uint, DetectionPacket> _irDetectionCache = new();
     private bool _hasReceivedDetectionPacket;
@@ -84,7 +79,6 @@ public partial class MainWindow : Window
     private string? _lastOverlaySignature;
     private readonly Dictionary<string, int> _activeMotorDirections = new(StringComparer.Ordinal);
     private readonly HashSet<Key> _pressedMotorKeys = new();
-    private const int OverlayCacheLimit = 48;
     private const uint OverlayFrameTolerance = 12;
     private const float DisplayScoreThreshold = 0.60f;
     private sealed class RecordedVideoItem
@@ -183,10 +177,10 @@ public partial class MainWindow : Window
         _viewModel.ManualAnalysisSaveRequested += ViewModel_OnManualAnalysisSaveRequested;
         _viewModel.ManualSystemLogSaveRequested += ViewModel_OnManualSystemLogSaveRequested;
         _jetsonBridgeSshService.MessageReady += JetsonBridgeSshService_OnMessageReady;
-        _eoUdpCaptureService.FrameReady += OnEoFrameReady;
+        _eoUdpCaptureService.FrameReady += _viewModel.OnEoFrameReady;
         _eoUdpCaptureService.DetectionsReceived += OnEoDetectionsReceived;
         _eoUdpCaptureService.StatusReceived += OnYoloStatusReceived;
-        _irUdpCaptureService.FrameReady += OnIrFrameReady;
+        _irUdpCaptureService.FrameReady += _viewModel.OnIrFrameReady;
         _irUdpCaptureService.DetectionsReceived += OnIrDetectionsReceived;
         _irUdpCaptureService.StatusReceived += OnYoloStatusReceived;
         _motorStatusReceiverService.StatusReceived += OnMotorStatusReceived;
@@ -333,20 +327,6 @@ public partial class MainWindow : Window
         _isDraggingZoom = false;
         CameraViewport.ReleaseMouseCapture();
     }
-
-    private void OnEoFrameReady(ReceivedVideoFrame frame)
-    {
-        _latestEoFrame = frame;
-        CacheFrame(frame, _eoFrameCache);
-
-        if (!_hasReceivedEoFrame)
-        {
-            _hasReceivedEoFrame = true;
-        }
-
-        _viewModel.UpdateEoFrame(frame.Bitmap);
-    }
-
     private void OnEoDetectionsReceived(DetectionPacket detectionPacket)
     {
         HandleDetectionsReceived(detectionPacket, _eoDetectionCache);
@@ -424,20 +404,6 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() => _viewModel.AppendImportantLog($"모터 상태 수신 오류: {message}"));
     }
-
-    private void OnIrFrameReady(ReceivedVideoFrame frame)
-    {
-        _latestIrFrame = frame;
-        CacheFrame(frame, _irFrameCache);
-
-        if (!_hasReceivedIrFrame)
-        {
-            _hasReceivedIrFrame = true;
-        }
-
-        _viewModel.UpdateIrFrame(frame.Bitmap);
-    }
-
     private void OnEoSegmentChanged(PlaybackSegmentInfo segmentInfo)
     {
     }
@@ -465,7 +431,6 @@ public partial class MainWindow : Window
             CameraViewport.ActualWidth,
             CameraViewport.ActualHeight);
     }
-
     private void RenderDetectionOverlay(bool forceRefresh = false)
     {
         if (_isRenderingOverlay)
@@ -483,7 +448,9 @@ public partial class MainWindow : Window
         {
             DetectionOverlayCanvas.Children.Clear();
 
-            var latestFrame = _viewModel.IsEoPrimary ? _latestEoFrame : _latestIrFrame;
+            var latestFrame = _viewModel.IsEoPrimary
+                ? _viewModel.LatestEoFrame
+                : _viewModel.LatestIrFrame;
             if (latestFrame is null)
             {
                 _lastOverlaySignature = null;
@@ -633,13 +600,14 @@ public partial class MainWindow : Window
     {
         return new Point(y, sourceWidth - x);
     }
-
-    private static void CacheFrame(ReceivedVideoFrame frame, Dictionary<uint, ReceivedVideoFrame> frameCache)
+    private static void TrimCache<T>(Dictionary<uint, T> cache)
     {
-        frameCache[frame.FrameIndex] = frame;
-        TrimCache(frameCache);
+        while (cache.Count > OverlayCacheLimit)
+        {
+            var oldestKey = cache.Keys.Min();
+            cache.Remove(oldestKey);
+        }
     }
-
     private static void CacheDetectionPacket(
         DetectionPacket detectionPacket,
         Dictionary<uint, DetectionPacket> detectionCache)
@@ -647,7 +615,6 @@ public partial class MainWindow : Window
         detectionCache[detectionPacket.FrameId] = detectionPacket;
         TrimCache(detectionCache);
     }
-
     private bool TryGetRenderableDetectionPacket(
         uint currentFrameId,
         Dictionary<uint, DetectionPacket> detectionCache,
@@ -694,9 +661,11 @@ public partial class MainWindow : Window
 
     private bool TryGetRenderableFrameAndDetection(out ReceivedVideoFrame frame, out DetectionPacket detectionPacket)
     {
-        var latestFrame = _viewModel.IsEoPrimary ? _latestEoFrame : _latestIrFrame;
-        var frameCache = _viewModel.IsEoPrimary ? _eoFrameCache : _irFrameCache;
-        var detectionCache = _viewModel.IsEoPrimary ? _eoDetectionCache : _irDetectionCache;
+        var isEoPrimary = _viewModel.IsEoPrimary;
+        var latestFrame = isEoPrimary
+            ? _viewModel.LatestEoFrame
+            : _viewModel.LatestIrFrame;
+        var detectionCache = isEoPrimary ? _eoDetectionCache : _irDetectionCache;
 
         if (latestFrame is not null &&
             detectionCache.TryGetValue(latestFrame.Value.FrameIndex, out detectionPacket))
@@ -706,13 +675,17 @@ public partial class MainWindow : Window
         }
 
         var exactPairs = detectionCache
-            .Where(pair => pair.Value.Detections.Count > 0 && frameCache.ContainsKey(pair.Key))
+            .Where(pair => pair.Value.Detections.Count > 0)
             .OrderByDescending(pair => pair.Key)
             .ToArray();
 
         foreach (var pair in exactPairs)
         {
-            frame = frameCache[pair.Key];
+            if (!_viewModel.TryGetCachedFrame(isEoPrimary, pair.Key, out frame))
+            {
+                continue;
+            }
+
             detectionPacket = pair.Value;
             return true;
         }
@@ -868,16 +841,6 @@ public partial class MainWindow : Window
             return null;
         }
     }
-
-    private static void TrimCache<T>(Dictionary<uint, T> cache)
-    {
-        while (cache.Count > OverlayCacheLimit)
-        {
-            var oldestKey = cache.Keys.Min();
-            cache.Remove(oldestKey);
-        }
-    }
-
     private void AddDetectionVisualToCanvas(
         double rectLeft,
         double rectTop,
@@ -2033,10 +1996,10 @@ public partial class MainWindow : Window
         _viewModel.ManualAnalysisSaveRequested -= ViewModel_OnManualAnalysisSaveRequested;
         _viewModel.ManualSystemLogSaveRequested -= ViewModel_OnManualSystemLogSaveRequested;
         _jetsonBridgeSshService.MessageReady -= JetsonBridgeSshService_OnMessageReady;
-        _eoUdpCaptureService.FrameReady -= OnEoFrameReady;
+        _eoUdpCaptureService.FrameReady -= _viewModel.OnEoFrameReady;
         _eoUdpCaptureService.DetectionsReceived -= OnEoDetectionsReceived;
         _eoUdpCaptureService.StatusReceived -= OnYoloStatusReceived;
-        _irUdpCaptureService.FrameReady -= OnIrFrameReady;
+        _irUdpCaptureService.FrameReady -= _viewModel.OnIrFrameReady;
         _irUdpCaptureService.DetectionsReceived -= OnIrDetectionsReceived;
         _irUdpCaptureService.StatusReceived -= OnYoloStatusReceived;
         _motorStatusReceiverService.StatusReceived -= OnMotorStatusReceived;

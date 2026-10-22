@@ -612,30 +612,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         get => _motorTargetTiltText;
         set => SetProperty(ref _motorTargetTiltText, value);
     }
-
-    /// <summary>
-    /// EO 카메라 프레임을 ViewModel에 반영한다.
-    /// EO가 메인 화면이든 보조 화면이든 관계없이, 바인딩된 이미지가 즉시 갱신되도록 알림을 보낸다.
-    /// </summary>
-    public void UpdateEoFrame(ImageSource? frame)
-    {
-        _eoFrame = frame;
-        OnPropertyChanged(nameof(LargeFeedImage));
-        OnPropertyChanged(nameof(InsetFeedImage));
-    }
-
-    /// <summary>
-    /// IR 카메라 프레임을 ViewModel에 반영한다.
-    /// 하드웨어 장착 방향을 직접 조정할 수 있도록 수신 프레임의 원본 각도를 그대로 화면에 사용한다.
-    /// EO/IR 화면이 서로 바뀐 상태여도 메인 화면과 보조 화면 모두 즉시 갱신된다.
-    /// </summary>
-    public void UpdateIrFrame(ImageSource? frame)
-    {
-        _irFrame = frame;
-        OnPropertyChanged(nameof(LargeFeedImage));
-        OnPropertyChanged(nameof(InsetFeedImage));
-    }
-
     private static ImageSource? RotateFrame(ImageSource? frame, double angle)
     {
         if (frame is not BitmapSource bitmap)
