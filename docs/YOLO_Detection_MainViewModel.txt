@@ -1,0 +1,94 @@
+﻿MainViewModel.cs — YOLO / Detection 코드 원문
+
+    private bool _isEoPrimary = true;
+    private bool _isSettingsOpen;
+    private bool _isSystemPoweredOn = true;
+    private string _currentMode = "\uC790\uB3D9";
+    private string _selectedPrimaryTarget = "\uBCF5\uD569";
+    private string _currentThreatLevel = "\uB0AE\uC74C";
+    // 프로그램을 처음 켰을 때 밝기는 중간값인 50%에서 시작한다.
+    private double _brightness = 50;
+    private double _contrast = 50;
+    private bool _isManualRecordingEnabled;
+    private bool _isRecordingSuppressed;
+    private bool _isAutoRecordingLatched;
+    private AppThemeMode _currentThemeMode;
+    private double _eoDisplayRotationAngle;
+    private double _irDisplayRotationAngle;
+    private double _zoomLevel = 1.0;
+    private double _zoomPanX;
+    private double _zoomPanY;
+    private double _viewportWidth = 1;
+    private double _viewportHeight = 1;
+    private double _motorPan;
+    private double _motorTilt;
+    private int _autoPanMotorStepSize = DefaultMotorStepSize;
+    private int _autoTiltMotorStepSize = DefaultMotorStepSize;
+    private int _manualPanMotorStepSize = DefaultMotorStepSize;
+    private int _manualTiltMotorStepSize = DefaultMotorStepSize;
+    private double _panMotorPositionDegrees;
+    private double _tiltMotorPositionDegrees;
+    private bool _isMotorDetailsOpen;
+    private UiLanguage _uiLanguage = UiLanguage.English;
+    private string _motorTargetPanText = "0.0";
+    private string _motorTargetTiltText = "0.0";
+    private bool _hasTrackedTarget;
+
+    public string EoSubtitle => "Jetson YOLO EO stream";
+
+    public string IrSubtitle => "ZYBO10 -> Jetson YOLO IR stream";
+
+    public ImageSource? LargeFeedImage => _isEoPrimary
+
+    public ImageSource? InsetFeedImage => _isEoPrimary
+
+    public string LargeFeedTitle => _isEoPrimary ? EoTitle : IrTitle;
+
+    public string InsetFeedTitle => _isEoPrimary ? IrTitle : EoTitle;
+
+    public string MotorTargetTiltText
+    {
+        get => _motorTargetTiltText;
+        set => SetProperty(ref _motorTargetTiltText, value);
+    }
+    private static ImageSource? RotateFrame(ImageSource? frame, double angle)
+    {
+        if (frame is not BitmapSource bitmap)
+        {
+            return frame;
+        }
+
+        if (Math.Abs(angle) < double.Epsilon)
+        {
+            return bitmap;
+        }
+
+        var transformed = new TransformedBitmap(bitmap, new RotateTransform(angle));
+        transformed.Freeze();
+        return transformed;
+    }
+
+    public void UpdateDetectionSummary(IReadOnlyList<DetectionInfo> detections)
+    {
+        // 자동 모드에서는 탐지 유무를 보고 스캔(0)과 추적(1) 모드 패킷을 전환한다.
+        var hasTrackedTarget = detections.Count > 0;
+        if (_hasTrackedTarget == hasTrackedTarget)
+        {
+            return;
+        }
+
+        _hasTrackedTarget = hasTrackedTarget;
+
+        if (!IsAutoMode)
+        {
+            return;
+        }
+
+        if (!TrySendCurrentModeToController(out var modeError))
+        {
+            AppendImportantLog($"자동 모드 상태 전송에 실패했습니다: {modeError}");
+            return;
+        }
+
+    }
+

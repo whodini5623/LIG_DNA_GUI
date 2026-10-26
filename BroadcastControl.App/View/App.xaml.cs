@@ -2,6 +2,9 @@ using System.Windows;
 using System.Windows.Media;
 using MaterialDesignThemes.Wpf;
 using Microsoft.Win32;
+using Microsoft.Extensions.DependencyInjection;
+using BroadcastControl.App.Services;
+using BroadcastControl.App.ViewModels;
 
 namespace BroadcastControl.App;
 
@@ -11,6 +14,22 @@ namespace BroadcastControl.App;
 /// </summary>
 public partial class App : Application
 {
+    private readonly ServiceProvider _serviceProvider;
+
+    public App()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<UdpMotorControlService>();
+        services.AddSingleton<MainViewModel>();
+        services.AddKeyedSingleton<UdpEncodedVideoReceiverService>("eo", (_, _) => new UdpEncodedVideoReceiverService());
+        services.AddKeyedSingleton<UdpEncodedVideoReceiverService>("ir", (_, _) => new UdpEncodedVideoReceiverService(applyIrFalseColor: true));
+        services.AddSingleton<ViewportRecordingService>();
+        services.AddSingleton<UdpMotorStatusReceiverService>();
+        services.AddSingleton<MobileAlertHubService>();
+        services.AddSingleton<JetsonBridgeSshService>();
+        services.AddSingleton<MainWindow>();
+        _serviceProvider = services.BuildServiceProvider();
+    }
     /// <summary>
     /// 현재 앱 테마 상태임. 설정창 버튼 상태와 테마 전환 기준으로 사용함.
     /// </summary>
@@ -23,7 +42,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         // StartupUri 대신 코드에서 창을 생성해 테마 적용 순서를 명확히 함.
-        var mainWindow = new MainWindow();
+        var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         MainWindow = mainWindow;
         mainWindow.Show();
     }
