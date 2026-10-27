@@ -1,4 +1,4 @@
-<UserControl x:Class="BroadcastControl.App.View.Dialogs.RecordedVideosView"
+<UserControl x:Class="BroadcastControl.App.View.RecordedVideosView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid />

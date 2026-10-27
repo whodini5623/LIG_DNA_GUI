@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace BroadcastControl.App.View.Dialogs;
+namespace BroadcastControl.App.View;
 
 public partial class RecordedVideosView : UserControl
 {
