@@ -1,241 +1,200 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using BroadcastControl.App.Models;
-
 
 namespace BroadcastControl.App.Services;
 
-    public class DetectionService
+/// <summary>
+/// Keeps the recent camera and detection packets and applies target/score filtering.
+/// UI updates, overlay drawing, and alert delivery stay with their respective owners.
+/// </summary>
+public sealed class DetectionService
+{
+    private const int CacheLimit = 48;
+    private const uint FrameTolerance = 12;
+    private const float DisplayScoreThreshold = 0.60f;
+
+    private static readonly HashSet<string> NonMilitaryTargetClasses = new(StringComparer.OrdinalIgnoreCase)
     {
-        private bool _hasReceivedDetectionPacket;
-        private bool _hasReceivedNonEmptyDetectionPacket;
-        private string? _lastFilteredOutTargetSignature;
-        private readonly Dictionary<uint, DetectionPacket> _eoDetectionCache = new();
-        private readonly Dictionary<uint, DetectionPacket> _irDetectionCache = new();
-        private void OnEoDetectionsReceived(DetectionPacket detectionPacket)
+        "chair", "dining table", "tv", "laptop", "cell phone", "bottle", "couch", "bench", "refrigerator"
+    };
+
+    private static readonly HashSet<string> CompositeTargetClasses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "person", "airplane", "bicycle", "car", "motorcycle", "bus", "truck", "train", "boat",
+        "cell phone", "laptop", "chair", "dining table", "tv", "couch", "bench", "bottle", "refrigerator"
+    };
+
+    private readonly Dictionary<uint, ReceivedVideoFrame> _eoFrameCache = new();
+    private readonly Dictionary<uint, ReceivedVideoFrame> _irFrameCache = new();
+    private readonly Dictionary<uint, DetectionPacket> _eoDetectionCache = new();
+    private readonly Dictionary<uint, DetectionPacket> _irDetectionCache = new();
+    private bool _hasReceivedDetectionPacket;
+    private bool _hasReceivedNonEmptyDetectionPacket;
+    private string? _lastFilteredOutTargetSignature;
+    private string? _lastDetectionAlertSignature;
+
+    public bool HasReceivedDetectionPacket => _hasReceivedDetectionPacket;
+
+    public bool HasReceivedNonEmptyDetectionPacket => _hasReceivedNonEmptyDetectionPacket;
+
+    public string? LastFilteredOutTargetSignature => _lastFilteredOutTargetSignature;
+
+    public string? LastDetectionAlertSignature => _lastDetectionAlertSignature;
+
+    public ReceivedVideoFrame? LatestEoFrame { get; private set; }
+
+    public ReceivedVideoFrame? LatestIrFrame { get; private set; }
+
+    public void StoreEoFrame(ReceivedVideoFrame frame)
+    {
+        LatestEoFrame = frame;
+        CacheFrame(frame, _eoFrameCache);
+    }
+
+    public void StoreIrFrame(ReceivedVideoFrame frame)
+    {
+        LatestIrFrame = frame;
+        CacheFrame(frame, _irFrameCache);
+    }
+
+    public IReadOnlyList<DetectionInfo> StoreAndFilterDetections(
+        bool isEo,
+        DetectionPacket packet,
+        string primaryTarget)
+    {
+        var cache = isEo ? _eoDetectionCache : _irDetectionCache;
+        cache[packet.FrameId] = packet;
+        TrimCache(cache);
+        _hasReceivedDetectionPacket = true;
+
+        var filtered = packet.Detections.Where(item => ShouldDisplay(item, primaryTarget)).ToArray();
+        if (filtered.Length > 0)
         {
-            HandleDetectionsReceived(detectionPacket, _eoDetectionCache);
+            _hasReceivedNonEmptyDetectionPacket = true;
         }
-        private void OnIrDetectionsReceived(DetectionPacket detectionPacket)
-        {
-            HandleDetectionsReceived(detectionPacket, _irDetectionCache);
-        }
-        private void HandleDetectionsReceived(
-            DetectionPacket detectionPacket,
-            Dictionary<uint, DetectionPacket> detectionCache)
-        {
-            CacheDetectionPacket(detectionPacket, detectionCache);
 
-            if (!_hasReceivedDetectionPacket)
-            {
-                _hasReceivedDetectionPacket = true;
-            }
+        _lastFilteredOutTargetSignature = packet.Detections.Count > 0 && filtered.Length == 0
+            ? $"{primaryTarget}:{packet.FrameId}"
+            : null;
 
-            var displayDetections = FilterDisplayDetections(detectionPacket.Detections);
+        return filtered;
+    }
 
-            if (!_hasReceivedNonEmptyDetectionPacket && displayDetections.Count > 0)
-            {
-                _hasReceivedNonEmptyDetectionPacket = true;
-            }
+    public void UpdateDetectionAlertSignature(uint frameId, IReadOnlyList<DetectionInfo> detections)
+    {
+        _lastDetectionAlertSignature = detections.Count == 0 ? null : $"{frameId}:{detections.Count}";
+    }
 
-            if (detectionPacket.Detections.Count > 0 && displayDetections.Count == 0)
-            {
-                var filteredSignature = $"{_viewModel.SelectedPrimaryTarget}:{detectionPacket.FrameId}";
-                if (!string.Equals(_lastFilteredOutTargetSignature, filteredSignature, StringComparison.Ordinal))
-                {
-                    _lastFilteredOutTargetSignature = filteredSignature;
-                }
-            }
-            else
-            {
-                _lastFilteredOutTargetSignature = null;
-            }
+    public bool TryGetCachedFrame(bool isEo, uint frameIndex, out ReceivedVideoFrame frame)
+    {
+        return (isEo ? _eoFrameCache : _irFrameCache).TryGetValue(frameIndex, out frame);
+    }
 
-            NotifyDetectionAlertIfNeeded(detectionPacket.FrameId, displayDetections);
-            _viewModel.UpdateDetectionSummary(displayDetections);
-            RenderDetectionOverlay(forceRefresh: true);
-            UpdateRiskAndMobileAlert(detectionPacket.FrameId, displayDetections);
-        }
-        private static void CacheDetectionPacket(DetectionPacket detectionPacket, Dictionary<uint, DetectionPacket> detectionCache)
-        {
-            detectionCache[detectionPacket.FrameId] = detectionPacket;
-            TrimCache(detectionCache);
-        }
-        private bool TryGetRenderableDetectionPacket(uint currentFrameId, Dictionary<uint, DetectionPacket> detectionCache,
+    public bool TryGetRenderableFrameAndDetection(
+        bool isEo,
+        out ReceivedVideoFrame frame,
         out DetectionPacket detectionPacket)
+    {
+        var latestFrame = isEo ? LatestEoFrame : LatestIrFrame;
+        var frameCache = isEo ? _eoFrameCache : _irFrameCache;
+        var detectionCache = isEo ? _eoDetectionCache : _irDetectionCache;
+
+        if (latestFrame is { } latest && detectionCache.TryGetValue(latest.FrameIndex, out detectionPacket))
         {
-            if (detectionCache.TryGetValue(currentFrameId, out detectionPacket))
-            {
-                return true;
-            }
-
-            var recentCandidates = detectionCache
-                .Where(pair => pair.Value.Detections.Count > 0 && pair.Key <= currentFrameId)
-                .OrderByDescending(pair => pair.Key)
-                .ToArray();
-
-            foreach (var candidate in recentCandidates)
-            {
-                var frameGap = currentFrameId >= candidate.Key
-                    ? currentFrameId - candidate.Key
-                    : uint.MaxValue;
-
-                if (frameGap > OverlayFrameTolerance)
-                {
-                    break;
-                }
-
-                detectionPacket = candidate.Value;
-                return true;
-            }
-
-            var fallbackCandidates = detectionCache
-                .Where(pair => pair.Value.Detections.Count > 0)
-                .OrderByDescending(pair => pair.Key)
-                .ToArray();
-
-            foreach (var candidate in fallbackCandidates)
-            {
-                detectionPacket = candidate.Value;
-                return true;
-            }
-
-            detectionPacket = default;
-            return false;
+            frame = latest;
+            return true;
         }
-        private bool TryGetRenderableFrameAndDetection(out ReceivedVideoFrame frame, out DetectionPacket detectionPacket)
+
+        foreach (var pair in detectionCache
+                     .Where(pair => pair.Value.Detections.Count > 0)
+                     .OrderByDescending(pair => pair.Key))
         {
-            var isEoPrimary = _viewModel.IsEoPrimary;
-            var latestFrame = isEoPrimary
-                ? _viewModel.LatestEoFrame
-                : _viewModel.LatestIrFrame;
-            var detectionCache = isEoPrimary ? _eoDetectionCache : _irDetectionCache;
-
-            if (latestFrame is not null &&
-                detectionCache.TryGetValue(latestFrame.Value.FrameIndex, out detectionPacket))
+            if (frameCache.TryGetValue(pair.Key, out frame))
             {
-                frame = latestFrame.Value;
-                return true;
-            }
-
-            var exactPairs = detectionCache
-                .Where(pair => pair.Value.Detections.Count > 0)
-                .OrderByDescending(pair => pair.Key)
-                .ToArray();
-
-            foreach (var pair in exactPairs)
-            {
-                if (!_viewModel.TryGetCachedFrame(isEoPrimary, pair.Key, out frame))
-                {
-                    continue;
-                }
-
                 detectionPacket = pair.Value;
                 return true;
             }
+        }
 
-            if (latestFrame is not null &&
-                TryGetRenderableDetectionPacket(latestFrame.Value.FrameIndex, detectionCache, out detectionPacket))
-            {
-                frame = latestFrame.Value;
-                return true;
-            }
+        if (latestFrame is { } current && TryGetRecentDetection(current.FrameIndex, detectionCache, out detectionPacket))
+        {
+            frame = current;
+            return true;
+        }
 
-            frame = default;
-            detectionPacket = default;
+        frame = default;
+        detectionPacket = default;
+        return false;
+    }
+
+    public static IReadOnlyList<DetectionInfo> FilterDisplayDetections(
+        IReadOnlyList<DetectionInfo> detections,
+        string primaryTarget)
+    {
+        return detections.Where(item => ShouldDisplay(item, primaryTarget)).ToArray();
+    }
+
+    private static bool ShouldDisplay(DetectionInfo detection, string primaryTarget)
+    {
+        if (detection.Score < DisplayScoreThreshold)
+        {
             return false;
         }
 
-        private IReadOnlyList<DetectionInfo> FilterDisplayDetections(IReadOnlyList<DetectionInfo> detections)
+        var className = detection.ClassName.ToLowerInvariant();
+        return primaryTarget switch
         {
-            var filtered = detections
-                .Where(ShouldDisplayDetectionSafe)
-                .ToArray();
-            return filtered;
-        }
+            "\uBCF5\uD569" => true,
+            "\uC0AC\uB78C" => className == "person",
+            "\uBB34\uAE30\uCCB4\uACC4" => CompositeTargetClasses.Contains(className),
+            "\uD1B5\uC2E0 \uC7A5\uBE44" => className is "cell phone" or "laptop",
+            "\uBE44\uAD70\uC0AC \uD45C\uC801" => NonMilitaryTargetClasses.Contains(className),
+            _ => true
+        };
+    }
 
-        private bool ShouldDisplayDetectionSafe(DetectionInfo detection)
+    private static bool TryGetRecentDetection(
+        uint currentFrameIndex,
+        Dictionary<uint, DetectionPacket> cache,
+        out DetectionPacket detectionPacket)
+    {
+        foreach (var candidate in cache
+                     .Where(pair => pair.Value.Detections.Count > 0 && pair.Key <= currentFrameIndex)
+                     .OrderByDescending(pair => pair.Key))
         {
-            var className = detection.ClassName.ToLowerInvariant();
-            var primaryTarget = _viewModel.SelectedPrimaryTarget;
-            if (detection.Score < DisplayScoreThreshold)
+            if (currentFrameIndex - candidate.Key > FrameTolerance)
             {
-                return false;
+                break;
             }
 
-            if (primaryTarget == "\uBCF5\uD569")
-            {
-                return true;
-            }
-
-            if (primaryTarget == "\uC0AC\uB78C")
-            {
-                return className == "person";
-            }
-
-            if (primaryTarget == "\uACF5\uC911 \uBB34\uAE30\uCCB4\uACC4")
-            {
-                return className == "airplane";
-            }
-
-            if (primaryTarget == "\uC721\uC0C1 \uBB34\uAE30\uCCB4\uACC4")
-            {
-                return className is "bicycle" or "car" or "motorcycle" or "bus" or "truck" or "train";
-            }
-
-            if (primaryTarget == "\uD574\uC0C1 \uBB34\uAE30\uCCB4\uACC4")
-            {
-                return className == "boat";
-            }
-
-            if (primaryTarget == "\uD1B5\uC2E0 \uC7A5\uBE44")
-            {
-                return className is "cell phone" or "laptop";
-            }
-
-            if (primaryTarget == "\uBE44\uAD70\uC0AC \uD45C\uC801")
-            {
-                return NonMilitaryTargetClasses.Contains(className);
-            }
-
+            detectionPacket = candidate.Value;
             return true;
         }
-        private void NotifyDetectionAlertIfNeeded(uint frameId, IReadOnlyList<DetectionInfo> detections)
+
+        var fallback = cache
+            .Where(pair => pair.Value.Detections.Count > 0)
+            .OrderByDescending(pair => pair.Key)
+            .FirstOrDefault();
+        if (fallback.Value.Detections is not null)
         {
-            _lastDetectionAlertSignature = detections.Count == 0 ? null : $"{frameId}:{detections.Count}";
+            detectionPacket = fallback.Value;
+            return true;
         }
 
-        private void UpdateRiskAndMobileAlert(uint frameId, IReadOnlyList<DetectionInfo> detections)
-        {
-            if (detections.Count == 0)
-            {
-                _viewModel.ApplyVlmAnalysisResult("낮음", "VLM 분석: 현재 선택된 주 탐지체 기준 위험 객체가 확인되지 않았습니다.");
-                return;
-            }
-
-            var analysis = BuildVlmStyleAnalysis(detections);
-            var detectionSummary = BuildDetectionSummary(detections);
-            _viewModel.ApplyVlmAnalysisResult("높음", $"{analysis} 탐지 내용: {detectionSummary}");
-
-            var alertSignature = $"{_viewModel.SelectedPrimaryTarget}:{frameId}:{BuildOverlaySignature(detections)}";
-            var now = DateTimeOffset.Now;
-            if (string.Equals(_lastDetectionAlertSignature, alertSignature, StringComparison.Ordinal) ||
-                now - _lastMobileAlertAt < MobileAlertCooldown)
-            {
-                return;
-            }
-
-            _lastDetectionAlertSignature = alertSignature;
-            _lastMobileAlertAt = now;
-            var evidencePng = CaptureElementAsPng(CameraPanel);
-            _ = _mobileAlertHubService.PublishAlertAsync(
-                "운용통제 위험 알림",
-                analysis,
-                detectionSummary,
-                _viewModel.CurrentThreatLevel,
-                evidencePng);
-            _viewModel.AppendImportantLog("모바일 앱으로 위험 알림을 전송했습니다.");
-        }   
+        detectionPacket = default;
+        return false;
     }
-    
+
+    private static void CacheFrame(ReceivedVideoFrame frame, Dictionary<uint, ReceivedVideoFrame> cache)
+    {
+        cache[frame.FrameIndex] = frame;
+        TrimCache(cache);
+    }
+
+    private static void TrimCache<T>(Dictionary<uint, T> cache)
+    {
+        while (cache.Count > CacheLimit)
+        {
+            cache.Remove(cache.Keys.Min());
+        }
+    }
+}

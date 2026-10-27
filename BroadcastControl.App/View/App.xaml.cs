@@ -5,6 +5,9 @@ using Microsoft.Win32;
 using Microsoft.Extensions.DependencyInjection;
 using BroadcastControl.App.Services;
 using BroadcastControl.App.ViewModels;
+using BroadcastControl.App.ViewModels.Right;
+using BroadcastControl.App.ViewModels.Left;
+using BroadcastControl.App.ViewModels.Middle;
 
 namespace BroadcastControl.App;
 
@@ -20,7 +23,18 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
         services.AddSingleton<UdpMotorControlService>();
+        services.AddSingleton<ApplicationLifecycleService>();
+        services.AddSingleton<LogExportService>();
+        services.AddSingleton<DetectionService>();
+        services.AddSingleton<DetectionAlertService>();
+        services.AddSingleton<RecordedVideoCatalogService>();
+        services.AddSingleton<RecordingMetadataService>();
+        services.AddSingleton<ThemeService>();
         services.AddSingleton<MainViewModel>();
+        services.AddSingleton<RecordedVideosViewModel>();
+        services.AddSingleton<MotorControlPanelViewModel>();
+        services.AddSingleton<CameraWorkspaceViewModel>();
+        services.AddSingleton<RecordingPanelViewModel>();
         services.AddKeyedSingleton<UdpEncodedVideoReceiverService>("eo", (_, _) => new UdpEncodedVideoReceiverService());
         services.AddKeyedSingleton<UdpEncodedVideoReceiverService>("ir", (_, _) => new UdpEncodedVideoReceiverService(applyIrFalseColor: true));
         services.AddSingleton<ViewportRecordingService>();
@@ -35,16 +49,26 @@ public partial class App : Application
     /// </summary>
     public AppThemeMode CurrentThemeMode { get; private set; } = AppThemeMode.Dark;
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         // 창 생성 전에 시스템 테마를 먼저 읽어 초기 색상 리소스를 맞춤.
         ApplyTheme(GetSystemThemeMode());
         base.OnStartup(e);
 
         // StartupUri 대신 코드에서 창을 생성해 테마 적용 순서를 명확히 함.
+        var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+        await viewModel.StartServicesAsync();
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
         MainWindow = mainWindow;
         mainWindow.Show();
+    }
+
+    protected override async void OnExit(ExitEventArgs e)
+    {
+        var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+        await viewModel.StopServicesAsync();
+        _serviceProvider.Dispose();
+        base.OnExit(e);
     }
 
     /// <summary>

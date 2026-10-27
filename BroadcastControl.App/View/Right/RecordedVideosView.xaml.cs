@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -108,7 +108,6 @@ public partial class RecordedVideosView : UserControl
     private void RecordedVideoPlayer_OnMediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
         _positionTimer.Stop();
-        RecordedVideosStatusText.Text = "영상을 재생할 수 없습니다.";
         if (e.ErrorException is not null) PlaybackFailed?.Invoke(e.ErrorException);
     }
 
@@ -158,14 +157,13 @@ public partial class RecordedVideosView : UserControl
         ResetPositionUi();
     }
 
-    public void PlayCachedVideo(string localPath, string displayName)
+    public void PlayCachedVideo(string localPath)
     {
         RecordedVideoPlayer.Source = new Uri(localPath, UriKind.Absolute);
         ResetZoom();
         ApplyPlaybackSpeed();
         RecordedVideoPlayer.Play();
         _positionTimer.Start();
-        RecordedVideosStatusText.Text = displayName;
     }
 
     public void StopAndClose()

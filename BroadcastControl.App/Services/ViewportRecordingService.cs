@@ -1,7 +1,4 @@
 using System.IO;
-using System.Windows;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using OpenCvSharp;
 
@@ -11,7 +8,7 @@ public sealed class ViewportRecordingService : IDisposable
 {
     private readonly DispatcherTimer _timer;
 
-    private FrameworkElement? _target;
+    private Func<byte[]?>? _captureFrame;
     private VideoWriter? _writer;
     private string? _recordingPath;
     private string? _recordingErrorMessage;
@@ -32,7 +29,9 @@ public sealed class ViewportRecordingService : IDisposable
 
     public int RecordedFrameCount => _recordedFrameCount;
 
-    public string StartRecordingToDesktop(FrameworkElement target)
+    public bool IsRecording => _isRecording;
+
+    public string StartRecordingToDesktop(Func<byte[]?> captureFrame)
     {
         if (_isRecording && !string.IsNullOrWhiteSpace(_recordingPath))
         {
@@ -54,7 +53,7 @@ public sealed class ViewportRecordingService : IDisposable
         _recordingErrorMessage = null;
         _recordingOutputSize = default;
         _recordedFrameCount = 0;
-        _target = target;
+        _captureFrame = captureFrame;
         _isRecording = true;
 
         CaptureAndWriteFrame();
@@ -73,7 +72,7 @@ public sealed class ViewportRecordingService : IDisposable
 
         var savedPath = _recordingPath;
         _recordingPath = null;
-        _target = null;
+        _captureFrame = null;
         return savedPath;
     }
 
@@ -84,37 +83,15 @@ public sealed class ViewportRecordingService : IDisposable
 
     private void CaptureAndWriteFrame()
     {
-        if (!_isRecording || _target is null || string.IsNullOrWhiteSpace(_recordingPath))
-        {
-            return;
-        }
-
-        var width = Math.Max(1, (int)Math.Round(_target.ActualWidth));
-        var height = Math.Max(1, (int)Math.Round(_target.ActualHeight));
-        if (width < 2 || height < 2)
+        if (!_isRecording || _captureFrame is null || string.IsNullOrWhiteSpace(_recordingPath))
         {
             return;
         }
 
         try
         {
-            _target.UpdateLayout();
-
-            var renderTarget = new RenderTargetBitmap(
-                width,
-                height,
-                96,
-                96,
-                PixelFormats.Pbgra32);
-            renderTarget.Render(_target);
-            renderTarget.Freeze();
-
-            var encoder = new BmpBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(renderTarget));
-
-            using var stream = new MemoryStream();
-            encoder.Save(stream);
-            var encodedBytes = stream.ToArray();
+            var encodedBytes = _captureFrame();
+            if (encodedBytes is null || encodedBytes.Length == 0) return;
 
             using var frame = Cv2.ImDecode(encodedBytes, ImreadModes.Color);
             if (frame.Empty())

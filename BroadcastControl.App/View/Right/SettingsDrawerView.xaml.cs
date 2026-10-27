@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.ComponentModel;
 using BroadcastControl.App.ViewModels;
 
 namespace BroadcastControl.App.View;
@@ -10,8 +11,31 @@ namespace BroadcastControl.App.View;
 public partial class SettingsDrawerView : UserControl
 {
     private const double ClosedOffset = 320;
+    private bool _isFullscreenMode = true;
     public event RoutedEventHandler? WindowModeToggleRequested;
-    public SettingsDrawerView() => InitializeComponent();
+    public SettingsDrawerView()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is INotifyPropertyChanged oldViewModel) oldViewModel.PropertyChanged -= ViewModel_OnPropertyChanged;
+            if (e.NewValue is INotifyPropertyChanged newViewModel) newViewModel.PropertyChanged += ViewModel_OnPropertyChanged;
+            if (e.NewValue is MainViewModel viewModel)
+            {
+                SetOpenState(viewModel.IsSettingsOpen, animate: false);
+                UpdateWindowModeButtonText(_isFullscreenMode);
+            }
+        };
+    }
+
+    private void ViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (e.PropertyName == nameof(MainViewModel.IsSettingsOpen))
+            SetOpenState(viewModel.IsSettingsOpen, animate: true);
+        else if (e.PropertyName is nameof(MainViewModel.IsEnglishLanguage) or nameof(MainViewModel.IsKoreanLanguage))
+            UpdateWindowModeButtonText(_isFullscreenMode);
+    }
     private void SettingsBackdrop_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is MainViewModel vm && vm.IsSettingsOpen) vm.IsSettingsOpen = false;
@@ -20,6 +44,7 @@ public partial class SettingsDrawerView : UserControl
 
     public void UpdateWindowModeButtonText(bool isFullscreen)
     {
+        _isFullscreenMode = isFullscreen;
         if (DataContext is not MainViewModel viewModel) return;
         WindowModeToggleButton.Content = isFullscreen
             ? viewModel.Text["WindowMode"]

@@ -59,7 +59,7 @@
 
                                    FontSize="13"
 
-                                   Text="" />
+                                   Text="{Binding RecordedVideos.StatusText}" />
 
                         </StackPanel>
 
@@ -146,6 +146,7 @@
                                       DisplayMemberPath="DisplayName"
 
                                      SelectionChanged="RecordedVideoList_OnSelectionChanged"
+                                     ItemsSource="{Binding RecordedVideos.CurrentItems}"
 
                                      Background="Transparent"
 

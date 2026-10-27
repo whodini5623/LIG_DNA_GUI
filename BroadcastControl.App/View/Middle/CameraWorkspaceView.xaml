@@ -33,7 +33,7 @@
 
                              EO/IR ?�왑 ?�태???�라 ?�시 ?�상???�라�? -->
 
-                                <Image Source="{Binding LargeFeedImage}"
+                                <Image Source="{Binding CameraWorkspace.LargeFeedImage}"
 
                                Margin="0"
 
@@ -223,7 +223,7 @@
 
                                         <Grid ClipToBounds="True">
 
-                                            <Image Source="{Binding InsetFeedImage}"
+                                            <Image Source="{Binding CameraWorkspace.InsetFeedImage}"
 
                                            Stretch="{Binding InsetFeedStretch}"
 
