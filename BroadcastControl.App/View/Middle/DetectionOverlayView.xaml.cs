@@ -1,11 +1,8 @@
 using System.Windows.Controls;
 
-namespace BroadcastControl.App.View;
+namespace BroadcastControl.App.View.Middle;
 
 public partial class DetectionOverlayView : UserControl
 {
-    public DetectionOverlayView()
-    {
-        InitializeComponent();
-    }
+    public DetectionOverlayView() => InitializeComponent();
 }
