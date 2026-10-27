@@ -968,6 +968,165 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         return buttons != MotorButtonMask.None;
     }
 
+    private void UpdateRecordingContext() => RecordingPanel.UpdateContext(
+        IsSystemPoweredOn, IsManualMode, IsAutoMode, CurrentThreatLevel == "\uB192\uC74C");
+
+    private void SetMode(object? parameter)
+    {
+        if (!IsSystemPoweredOn || parameter is not string mode ||
+            mode is not ("\uC790\uB3D9" or "\uC218\uB3D9") || mode == CurrentMode) return;
+
+        CurrentMode = mode;
+        if (!TrySendCurrentModeToController(out var modeError))
+            AppendImportantLog($"Motor mode send failed: {modeError}");
+        if (!TrySendStepSizePacket(out var stepError))
+            AppendImportantLog($"Motor step size send failed: {stepError}");
+        if (IsAutoMode && !TrySendButtonPacket(MotorButtonMask.None, out var buttonError))
+            AppendImportantLog($"Motor button reset failed: {buttonError}");
+    }
+
+    private void SelectPrimaryTarget(object? parameter)
+    {
+        if (IsSystemPoweredOn && parameter is string target &&
+            PrimaryTargets.Any(option => option.Value == target))
+            SelectedPrimaryTarget = target;
+    }
+
+    private void ToggleManualRecording() => RecordingPanel.ToggleManualRecording();
+
+    private void SetTheme(object? parameter)
+    {
+        if (parameter is not string themeName) return;
+        _currentThemeMode = string.Equals(themeName, "Light", StringComparison.OrdinalIgnoreCase)
+            ? AppThemeMode.Light : AppThemeMode.Dark;
+        _themeService.Apply(_currentThemeMode);
+        OnPropertyChanged(nameof(IsDarkThemeActive));
+        OnPropertyChanged(nameof(IsLightThemeActive));
+        OnPropertyChanged(nameof(DarkThemeButtonOpacity));
+        OnPropertyChanged(nameof(LightThemeButtonOpacity));
+    }
+
+    private void SetLanguage(object? parameter)
+    {
+        if (parameter is not string languageName) return;
+        var language = string.Equals(languageName, "Korean", StringComparison.OrdinalIgnoreCase)
+            ? UiLanguage.Korean : UiLanguage.English;
+        if (_uiLanguage == language) return;
+        _uiLanguage = language;
+        Text.Refresh();
+        foreach (var option in PrimaryTargets)
+            option.DisplayName = TranslatePrimaryTarget(option.Value);
+        foreach (var property in new[] { nameof(PowerButtonText), nameof(CurrentModeText),
+                     nameof(ManualRecordingButtonText), nameof(TrackingModeText), nameof(CurrentThreatText),
+                     nameof(PrimaryTargetText), nameof(PrimaryTargetShortText), nameof(IsEnglishLanguage),
+                     nameof(IsKoreanLanguage), nameof(EnglishLanguageButtonOpacity), nameof(KoreanLanguageButtonOpacity) })
+            OnPropertyChanged(property);
+    }
+
+    private void MoveMotor(object? parameter)
+    {
+        if (CanUseMotorControls && parameter is string direction) MoveMotorStep(direction);
+    }
+
+    private void SendMotorTargetAngles()
+    {
+        if (!CanUseMotorTargetControls ||
+            !double.TryParse(MotorTargetPanText, NumberStyles.Float, CultureInfo.InvariantCulture, out var pan) ||
+            !double.TryParse(MotorTargetTiltText, NumberStyles.Float, CultureInfo.InvariantCulture, out var tilt))
+        {
+            AppendImportantLog("Enter valid motor angles between 0 and 360.");
+            return;
+        }
+        pan = NormalizeMotorDegrees(pan, MotorPanLimitDegrees);
+        tilt = NormalizeMotorDegrees(tilt, MotorTiltLimitDegrees);
+        MotorTargetPanText = pan.ToString("0.0", CultureInfo.InvariantCulture);
+        MotorTargetTiltText = tilt.ToString("0.0", CultureInfo.InvariantCulture);
+        if (!MotorControlPanel.TrySendTargetAnglePacket(pan, tilt, out var error))
+        {
+            AppendImportantLog($"Motor target send failed: {error}");
+            return;
+        }
+        SetMotorPosition(pan, tilt);
+    }
+
+    private void AdjustMotorStep(object? parameter)
+    {
+        if (parameter is not string text) return;
+        var parts = text.Split(':', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var mode = parts.Length > 0 && parts[0].Equals("Manual", StringComparison.OrdinalIgnoreCase)
+            ? MotorStepMode.Manual : MotorStepMode.Auto;
+        var axis = parts.Length > 1 && parts[1].Equals("Tilt", StringComparison.OrdinalIgnoreCase)
+            ? MotorStepAxis.Tilt : parts.Length > 1 && parts[1].Equals("Pan", StringComparison.OrdinalIgnoreCase)
+                ? MotorStepAxis.Pan : MotorStepAxis.Both;
+        var operation = parts.Length > 2 ? parts[2] : parts.Length > 1 && axis == MotorStepAxis.Both ? parts[1] : string.Empty;
+        var reset = operation.Equals("Reset", StringComparison.OrdinalIgnoreCase);
+        var delta = 0;
+        if (!reset && !int.TryParse(operation, NumberStyles.Integer, CultureInfo.InvariantCulture, out delta))
+        {
+            if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out delta)) return;
+            axis = MotorStepAxis.Both;
+        }
+        else if (reset) delta = 0;
+
+        if (axis is MotorStepAxis.Pan or MotorStepAxis.Both)
+        {
+            if (mode == MotorStepMode.Auto) AutoPanMotorStepSize = reset ? DefaultMotorStepSize : AutoPanMotorStepSize + delta;
+            else ManualPanMotorStepSize = reset ? DefaultMotorStepSize : ManualPanMotorStepSize + delta;
+        }
+        if (axis is MotorStepAxis.Tilt or MotorStepAxis.Both)
+        {
+            if (mode == MotorStepMode.Auto) AutoTiltMotorStepSize = reset ? DefaultMotorStepSize : AutoTiltMotorStepSize + delta;
+            else ManualTiltMotorStepSize = reset ? DefaultMotorStepSize : ManualTiltMotorStepSize + delta;
+        }
+        if ((mode == MotorStepMode.Auto && IsAutoMode || mode == MotorStepMode.Manual && IsManualMode) &&
+            !TrySendStepSizePacket(out var error)) AppendImportantLog($"Motor step size send failed: {error}");
+    }
+
+    private void ToggleTrackingMode()
+    {
+        if (!IsSystemPoweredOn) return;
+        IsTrackingModeEnabled = !IsTrackingModeEnabled;
+        if (!TrySendCurrentModeToController(out var error)) AppendImportantLog($"Tracking mode send failed: {error}");
+    }
+
+    private void RaiseAllCommandStates()
+    {
+        foreach (var command in new[] { SetModeCommand, SelectPrimaryTargetCommand, ResetBrightnessCommand,
+                     ResetContrastCommand, ResetZoomCommand, ToggleManualRecordingCommand, MoveMotorCommand,
+                     SendMotorTargetCommand, AdjustMotorStepCommand, ToggleTrackingModeCommand })
+            if (command is RelayCommand relay) relay.RaiseCanExecuteChanged();
+    }
+
+    private string TranslateMode(string mode) => mode switch
+    {
+        "\uC790\uB3D9" => Text["AutoMode"], "\uC218\uB3D9" => Text["ManualMode"], _ => mode
+    };
+
+    private string TranslateThreatLevel(string level) => level switch
+    {
+        "\uB192\uC74C" => Text["ThreatHigh"], "\uC911\uAC04" => Text["ThreatMedium"], _ => Text["ThreatLow"]
+    };
+
+    private string TranslatePrimaryTarget(string target) => target switch
+    {
+        "\uBCF5\uD569" => Text["TargetComposite"], "\uC0AC\uB78C" => Text["TargetPerson"],
+        "\uBB34\uAE30\uCCB4\uACC4" => Text["TargetWeapon"], "\uD1B5\uC2E0 \uC7A5\uBE44" => Text["TargetComm"],
+        "\uBE44\uAD70\uC0AC \uD45C\uC801" => Text["TargetCivil"], _ => target
+    };
+
+    private string GetShortPrimaryTargetName(string target) => TranslatePrimaryTarget(target);
+
+    private IEnumerable<PrimaryTargetOption> CreatePrimaryTargetOptions() => new[]
+    {
+        "\uBCF5\uD569", "\uC0AC\uB78C", "\uBB34\uAE30\uCCB4\uACC4",
+        "\uD1B5\uC2E0 \uC7A5\uBE44", "\uBE44\uAD70\uC0AC \uD45C\uC801"
+    }.Select(target => new PrimaryTargetOption(target, TranslatePrimaryTarget(target)));
+
+    private int GetPanStepSize(MotorStepMode mode) => mode == MotorStepMode.Auto ? AutoPanMotorStepSize : ManualPanMotorStepSize;
+    private int GetTiltStepSize(MotorStepMode mode) => mode == MotorStepMode.Auto ? AutoTiltMotorStepSize : ManualTiltMotorStepSize;
+    private static double NormalizeMotorDegrees(double degrees, double limit) =>
+        Math.Clamp(Math.Round(degrees, 1, MidpointRounding.AwayFromZero), 0, limit);
+
     /// <summary>
     /// ViewModel 공통 속성 변경 도우미 메서드다.
     /// 값이 실제로 바뀐 경우에만 PropertyChanged를 발생시켜 불필요한 화면 갱신을 줄인다.

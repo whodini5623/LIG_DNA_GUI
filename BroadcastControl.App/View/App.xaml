@@ -12,6 +12,8 @@
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign3.Defaults.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
             <!-- 앱 전체 공통 색상 리소스.
                  App.xaml.cs에서 다크/라이트 테마 전환 시 함께 교체. -->
             <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FF161B24" />

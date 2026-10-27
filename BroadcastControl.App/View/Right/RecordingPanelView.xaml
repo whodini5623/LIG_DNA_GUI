@@ -17,10 +17,10 @@
             <TextBlock Foreground="{Binding RecordingTextBrush}" FontSize="18" FontWeight="Bold"
                        Text="{Binding Text[RecordingOn]}" />
         </StackPanel>
-        <Button Grid.Column="2" Click="OpenRecordedVideosButton_OnClick" Style="{StaticResource TopBarButton}"
+        <Button Grid.Column="2" Click="OpenRecordedVideosButton_OnClick" Style="{DynamicResource TopBarButton}"
                 Content="{Binding Text[RecordedData]}" />
         <Button Grid.Column="4" Command="{Binding ToggleSettingsCommand}"
-                Style="{StaticResource TopBarButton}" Padding="0">
+                Style="{DynamicResource TopBarButton}" Padding="0">
             <materialDesign:PackIcon Kind="Cog" Width="22" Height="22" />
         </Button>
     </Grid>

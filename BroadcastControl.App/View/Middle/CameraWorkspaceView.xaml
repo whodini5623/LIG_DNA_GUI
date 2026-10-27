@@ -5,7 +5,7 @@
 
                         Margin="0,0,0,8"
 
-                        Style="{StaticResource GlassCardBorder}"
+                        Style="{DynamicResource GlassCardBorder}"
 
                         BorderBrush="#00000000"
 
@@ -77,7 +77,7 @@
 
                                 VerticalAlignment="Top"
 
-                                Style="{StaticResource OverlayCardBorder}"
+                                Style="{DynamicResource OverlayCardBorder}"
 
                                 BorderThickness="0"
 
@@ -103,7 +103,7 @@
 
                                         Click="RotateLargeFeedButton_OnClick"
 
-                                        Style="{StaticResource InlineRotateButton}">
+                                        Style="{DynamicResource InlineRotateButton}">
 
                                             <materialDesign:PackIcon Kind="RotateRight" Width="14" Height="14" />
 
@@ -129,7 +129,7 @@
 
                                 VerticalAlignment="Bottom"
 
-                                Style="{StaticResource OverlayCardBorder}"
+                                Style="{DynamicResource OverlayCardBorder}"
 
                                 CornerRadius="2"
 
@@ -249,7 +249,7 @@
 
                                              VerticalAlignment="Top"
 
-                                             Style="{StaticResource OverlayCardBorder}"
+                                             Style="{DynamicResource OverlayCardBorder}"
 
                                              BorderThickness="0"
 
@@ -275,7 +275,7 @@
 
                                                     Click="RotateInsetFeedButton_OnClick"
 
-                                                    Style="{StaticResource InlineRotateButton}">
+                                                    Style="{DynamicResource InlineRotateButton}">
 
                                                         <materialDesign:PackIcon Kind="RotateRight" Width="12" Height="12" />
 
@@ -373,7 +373,7 @@
 
                                     MouseLeave="MotorButton_OnMouseLeave"
 
-                                    Style="{StaticResource ArrowButton}">
+                                    Style="{DynamicResource ArrowButton}">
 
                                         <materialDesign:PackIcon Kind="ArrowUpBold" Width="20" Height="20" />
 
@@ -395,7 +395,7 @@
 
                                     MouseLeave="MotorButton_OnMouseLeave"
 
-                                    Style="{StaticResource ArrowButton}">
+                                    Style="{DynamicResource ArrowButton}">
 
                                         <materialDesign:PackIcon Kind="ArrowLeftBold" Width="20" Height="20" />
 
@@ -417,7 +417,7 @@
 
                                     MouseLeave="MotorButton_OnMouseLeave"
 
-                                    Style="{StaticResource ArrowButton}">
+                                    Style="{DynamicResource ArrowButton}">
 
                                         <Ellipse Width="16"
 
@@ -447,7 +447,7 @@
 
                                     MouseLeave="MotorButton_OnMouseLeave"
 
-                                    Style="{StaticResource ArrowButton}">
+                                    Style="{DynamicResource ArrowButton}">
 
                                         <materialDesign:PackIcon Kind="ArrowRightBold" Width="20" Height="20" />
 
@@ -467,7 +467,7 @@
 
                                     MouseLeave="MotorButton_OnMouseLeave"
 
-                                    Style="{StaticResource ArrowButton}">
+                                    Style="{DynamicResource ArrowButton}">
 
                                         <materialDesign:PackIcon Kind="ArrowDownBold" Width="20" Height="20" />
 
@@ -493,7 +493,7 @@
 
                                 VerticalAlignment="Bottom"
 
-                                Style="{StaticResource OverlayCardBorder}"
+                                Style="{DynamicResource OverlayCardBorder}"
 
                                 CornerRadius="2"
 
@@ -517,7 +517,7 @@
 
                                         Command="{Binding ResetZoomCommand}"
 
-                                        Style="{StaticResource TopBarSmallButton}"
+                                        Style="{DynamicResource TopBarSmallButton}"
 
                                         Content="{Binding Text[CamZoom]}" />
 
@@ -537,7 +537,7 @@
 
                                         IsEnabled="{Binding CanUseZoomControls}"
 
-                                        Style="{StaticResource ZoomSliderStyle}" />
+                                        Style="{DynamicResource ZoomSliderStyle}" />
 
                                         <TextBlock Grid.Column="2"
 
@@ -617,7 +617,7 @@
 
                                             Command="{Binding ResetZoomCommand}"
 
-                                            Style="{StaticResource TopBarSmallButton}"
+                                            Style="{DynamicResource TopBarSmallButton}"
 
                                         Content="{Binding Text[CamZoom]}" />
 
@@ -663,7 +663,7 @@
 
                                         Opacity="{Binding AutoModeOpacity}"
 
-                                        Style="{StaticResource TopBarButton}"
+                                        Style="{DynamicResource TopBarButton}"
 
                                         Content="{Binding Text[AutoMode]}" />
 
@@ -681,7 +681,7 @@
 
                                         Opacity="{Binding ManualModeOpacity}"
 
-                                        Style="{StaticResource TopBarButton}"
+                                        Style="{DynamicResource TopBarButton}"
 
                                         Content="{Binding Text[ManualMode]}" />
 
@@ -703,7 +703,7 @@
 
                                             Command="{Binding ResetBrightnessCommand}"
 
-                                            Style="{StaticResource TopBarSmallButton}"
+                                            Style="{DynamicResource TopBarSmallButton}"
 
                                             Content="{Binding BrightnessText}" />
 
@@ -739,7 +739,7 @@
 
                                             Command="{Binding ResetContrastCommand}"
 
-                                            Style="{StaticResource TopBarSmallButton}"
+                                            Style="{DynamicResource TopBarSmallButton}"
 
                                             Content="{Binding ContrastText}" />
 
@@ -769,7 +769,7 @@
 
                                         IsEnabled="{Binding IsManualMode}"
 
-                                        Style="{StaticResource TopBarButton}"
+                                        Style="{DynamicResource TopBarButton}"
 
                                         Content="{Binding ManualRecordingButtonText}" />
 

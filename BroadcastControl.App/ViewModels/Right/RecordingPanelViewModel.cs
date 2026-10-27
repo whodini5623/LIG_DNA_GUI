@@ -1,6 +1,7 @@
 namespace BroadcastControl.App.ViewModels.Right;
 
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using BroadcastControl.App.Services;

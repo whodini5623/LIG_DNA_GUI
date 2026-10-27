@@ -24,4 +24,7 @@ public sealed class MotorControlPanelViewModel
     public bool TrySendStepSizePacket(int panStepSize, int tiltStepSize, out string? error) =>
         _motorControlService.TrySendStepSizePacket(panStepSize, tiltStepSize, out error);
 
+    public bool TrySendTargetAnglePacket(double panDegrees, double tiltDegrees, out string? error) =>
+        _motorControlService.TrySendTargetAnglePacket(panDegrees, tiltDegrees, out error);
+
 }

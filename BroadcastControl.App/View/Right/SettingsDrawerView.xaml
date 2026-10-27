@@ -31,7 +31,7 @@
 
                 Padding="22"
 
-                Effect="{StaticResource DrawerShadow}"
+                Effect="{DynamicResource DrawerShadow}"
 
                 UseLayoutRounding="True"
 
@@ -129,7 +129,7 @@
 
                                     CommandParameter="{Binding Value}"
 
-                                    Style="{StaticResource SettingsActionButton}"
+                                    Style="{DynamicResource SettingsActionButton}"
 
                                     Content="{Binding DisplayName}" />
 
@@ -183,7 +183,7 @@
 
                             Opacity="{Binding DarkThemeButtonOpacity}"
 
-                            Style="{StaticResource SettingsActionButton}"
+                            Style="{DynamicResource SettingsActionButton}"
 
                             Content="{Binding Text[DarkTheme]}" />
 
@@ -195,7 +195,7 @@
 
                             Opacity="{Binding LightThemeButtonOpacity}"
 
-                            Style="{StaticResource SettingsActionButton}"
+                            Style="{DynamicResource SettingsActionButton}"
 
                             Content="{Binding Text[LightTheme]}" />
 
@@ -245,7 +245,7 @@
 
                             Opacity="{Binding EnglishLanguageButtonOpacity}"
 
-                            Style="{StaticResource SettingsActionButton}"
+                            Style="{DynamicResource SettingsActionButton}"
 
                             Content="{Binding Text[English]}" />
 
@@ -257,7 +257,7 @@
 
                             Opacity="{Binding KoreanLanguageButtonOpacity}"
 
-                            Style="{StaticResource SettingsActionButton}"
+                            Style="{DynamicResource SettingsActionButton}"
 
                             Content="{Binding Text[Korean]}" />
 
@@ -293,7 +293,7 @@
 
                         Click="WindowModeToggleButton_OnClick"
 
-                        Style="{StaticResource SettingsActionButton}"
+                        Style="{DynamicResource SettingsActionButton}"
 
                         Content="{Binding Text[WindowMode]}" />
 

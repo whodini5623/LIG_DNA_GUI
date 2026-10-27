@@ -1,4 +1,4 @@
-<UserControl x:Class="BroadcastControl.App.View.RecordedVideosView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<UserControl x:Class="BroadcastControl.App.View.RecordedVideosView" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
 <Border x:Name="RecordedVideosPanel"
 
                 Margin="64"
@@ -73,7 +73,7 @@
 
                             Click="RefreshRecordedVideosButton_OnClick"
 
-                            Style="{StaticResource TopBarButton}"
+                            Style="{DynamicResource TopBarButton}"
 
                             Content="{Binding Text[Refresh]}" />
 
@@ -87,7 +87,7 @@
 
                             Click="CloseRecordedVideosButton_OnClick"
 
-                            Style="{StaticResource TopBarButton}"
+                            Style="{DynamicResource TopBarButton}"
 
                             Content="{Binding Text[Close]}" />
 
@@ -388,7 +388,7 @@
 
                                         Click="RecordedVideoPlayButton_OnClick"
 
-                                        Style="{StaticResource PlaybackIconButton}">
+                                        Style="{DynamicResource PlaybackIconButton}">
 
                                         <materialDesign:PackIcon Kind="Play" Width="22" Height="22" />
 
@@ -398,7 +398,7 @@
 
                                         Click="RecordedVideoPauseButton_OnClick"
 
-                                        Style="{StaticResource PlaybackIconButton}">
+                                        Style="{DynamicResource PlaybackIconButton}">
 
                                         <materialDesign:PackIcon Kind="Pause" Width="22" Height="22" />
 
@@ -408,7 +408,7 @@
 
                                         Click="RecordedVideoStopButton_OnClick"
 
-                                        Style="{StaticResource PlaybackIconButton}">
+                                        Style="{DynamicResource PlaybackIconButton}">
 
                                         <materialDesign:PackIcon Kind="Stop" Width="22" Height="22" />
 
@@ -446,7 +446,7 @@
 
                                             Click="RecordedVideoZoomResetButton_OnClick"
 
-                                            Style="{StaticResource TopBarSmallButton}"
+                                            Style="{DynamicResource TopBarSmallButton}"
 
                                             Content="x1.00" />
 

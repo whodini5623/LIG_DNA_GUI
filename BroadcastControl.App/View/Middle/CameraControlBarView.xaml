@@ -3,7 +3,7 @@
 
                             Padding="14,12"
 
-                            Style="{StaticResource GlassCardBorder}"
+                            Style="{DynamicResource GlassCardBorder}"
 
                             CornerRadius="2">
 
@@ -37,25 +37,25 @@
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,6,0" Orientation="Horizontal" VerticalAlignment="Center">
 
-                                    <Button Width="92" Margin="0,0,10,0" Command="{Binding ResetContrastCommand}" Style="{StaticResource TopBarSmallButton}" Content="{Binding ContrastText}" />
+                                    <Button Width="92" Margin="0,0,10,0" Command="{Binding ResetContrastCommand}" Style="{DynamicResource TopBarSmallButton}" Content="{Binding ContrastText}" />
 
-                                    <Slider Width="220" Minimum="0" Maximum="100" Value="{Binding Contrast, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSystemPoweredOn}" Style="{StaticResource TopBarCompactSlider}" />
+                                    <Slider Width="220" Minimum="0" Maximum="100" Value="{Binding Contrast, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSystemPoweredOn}" Style="{DynamicResource TopBarCompactSlider}" />
 
                                 </StackPanel>
 
 
 
-                                <Button Grid.Row="0" Grid.Column="1" Margin="6,0" Command="{Binding SetModeCommand}" CommandParameter="&#xC790;&#xB3D9;" IsHitTestVisible="{Binding CanSelectAutoMode}" Opacity="{Binding AutoModeOpacity}" Style="{StaticResource TopBarButton}" Content="{Binding Text[AutoMode]}" />
+                                <Button Grid.Row="0" Grid.Column="1" Margin="6,0" Command="{Binding SetModeCommand}" CommandParameter="&#xC790;&#xB3D9;" IsHitTestVisible="{Binding CanSelectAutoMode}" Opacity="{Binding AutoModeOpacity}" Style="{DynamicResource TopBarButton}" Content="{Binding Text[AutoMode]}" />
 
-                                <Button Grid.Row="0" Grid.Column="2" Margin="6,0" Command="{Binding SetModeCommand}" CommandParameter="&#xC218;&#xB3D9;" IsHitTestVisible="{Binding CanSelectManualMode}" Opacity="{Binding ManualModeOpacity}" Style="{StaticResource TopBarButton}" Content="{Binding Text[ManualMode]}" Click="Button_Click" />
+                                <Button Grid.Row="0" Grid.Column="2" Margin="6,0" Command="{Binding SetModeCommand}" CommandParameter="&#xC218;&#xB3D9;" IsHitTestVisible="{Binding CanSelectManualMode}" Opacity="{Binding ManualModeOpacity}" Style="{DynamicResource TopBarButton}" Content="{Binding Text[ManualMode]}" />
 
 
 
                                 <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,6,0" Orientation="Horizontal" VerticalAlignment="Center">
 
-                                    <Button Width="92" Margin="0,0,10,0" Command="{Binding ResetBrightnessCommand}" Style="{StaticResource TopBarSmallButton}" Content="{Binding BrightnessText}" />
+                                    <Button Width="92" Margin="0,0,10,0" Command="{Binding ResetBrightnessCommand}" Style="{DynamicResource TopBarSmallButton}" Content="{Binding BrightnessText}" />
 
-                                    <Slider Width="220" Minimum="0" Maximum="100" Value="{Binding Brightness, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSystemPoweredOn}" Style="{StaticResource TopBarCompactSlider}" />
+                                    <Slider Width="220" Minimum="0" Maximum="100" Value="{Binding Brightness, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsSystemPoweredOn}" Style="{DynamicResource TopBarCompactSlider}" />
 
                                 </StackPanel>
 
@@ -77,9 +77,9 @@
 
                                     </Grid.ColumnDefinitions>
 
-                                    <Button Grid.Column="0" Command="{Binding ResetZoomCommand}" Style="{StaticResource TopBarSmallButton}" Content="{Binding Text[CamZoom]}" />
+                                    <Button Grid.Column="0" Command="{Binding ResetZoomCommand}" Style="{DynamicResource TopBarSmallButton}" Content="{Binding Text[CamZoom]}" />
 
-                                    <Slider Grid.Column="2" Minimum="1" Maximum="4" TickFrequency="0.1" IsSnapToTickEnabled="False" Value="{Binding ZoomLevel, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanUseZoomControls}" Style="{StaticResource TopBarCompactSlider}" />
+                                    <Slider Grid.Column="2" Minimum="1" Maximum="4" TickFrequency="0.1" IsSnapToTickEnabled="False" Value="{Binding ZoomLevel, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanUseZoomControls}" Style="{DynamicResource TopBarCompactSlider}" />
 
                                     <TextBlock Grid.Column="3" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}" FontSize="13" FontWeight="SemiBold" TextAlignment="Right" Text="{Binding ZoomLevelText}" Grid.ColumnSpan="2" Margin="3,0,7,0" />
 
@@ -101,7 +101,7 @@
 
                                     Opacity="{Binding TrackingModeOpacity}"
 
-                                    Style="{StaticResource TopBarButton}"
+                                    Style="{DynamicResource TopBarButton}"
 
                                     Content="{Binding TrackingModeText}" />
 
@@ -179,31 +179,31 @@
 
                                             </Grid.ColumnDefinitions>
 
-                                            <Button x:Name="MotorPadUpButton" Grid.Row="0" Grid.Column="1" Tag="Up" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{StaticResource MotorPadButton}">
+                                            <Button x:Name="MotorPadUpButton" Grid.Row="0" Grid.Column="1" Tag="Up" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{DynamicResource MotorPadButton}">
 
                                                 <materialDesign:PackIcon Kind="ArrowUpBold" Width="14" Height="14" />
 
                                             </Button>
 
-                                            <Button x:Name="MotorPadLeftButton" Grid.Row="1" Grid.Column="0" Tag="Left" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{StaticResource MotorPadButton}">
+                                            <Button x:Name="MotorPadLeftButton" Grid.Row="1" Grid.Column="0" Tag="Left" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{DynamicResource MotorPadButton}">
 
                                                 <materialDesign:PackIcon Kind="ArrowLeftBold" Width="14" Height="14" />
 
                                             </Button>
 
-                                            <Button x:Name="MotorPadCenterButton" Grid.Row="1" Grid.Column="1" Tag="Center" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{StaticResource MotorPadButton}">
+                                            <Button x:Name="MotorPadCenterButton" Grid.Row="1" Grid.Column="1" Tag="Center" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{DynamicResource MotorPadButton}">
 
                                                 <Ellipse Width="11" Height="11" Stroke="{DynamicResource PrimaryTextBrush}" StrokeThickness="1.6" Fill="Transparent" />
 
                                             </Button>
 
-                                            <Button x:Name="MotorPadRightButton" Grid.Row="1" Grid.Column="2" Tag="Right" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{StaticResource MotorPadButton}">
+                                            <Button x:Name="MotorPadRightButton" Grid.Row="1" Grid.Column="2" Tag="Right" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{DynamicResource MotorPadButton}">
 
                                                 <materialDesign:PackIcon Kind="ArrowRightBold" Width="14" Height="14" />
 
                                             </Button>
 
-                                            <Button x:Name="MotorPadDownButton" Grid.Row="2" Grid.Column="1" Tag="Down" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{StaticResource MotorPadButton}">
+                                            <Button x:Name="MotorPadDownButton" Grid.Row="2" Grid.Column="1" Tag="Down" PreviewMouseLeftButtonDown="MotorButton_OnPreviewMouseLeftButtonDown" PreviewMouseLeftButtonUp="MotorButton_OnPreviewMouseLeftButtonUp" MouseLeave="MotorButton_OnMouseLeave" Style="{DynamicResource MotorPadButton}">
 
                                                 <materialDesign:PackIcon Kind="ArrowDownBold" Width="14" Height="14" />
 

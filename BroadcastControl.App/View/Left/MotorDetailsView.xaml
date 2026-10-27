@@ -34,7 +34,7 @@
 
                     CornerRadius="2"
 
-                    Effect="{StaticResource DrawerShadow}">
+                    Effect="{DynamicResource DrawerShadow}">
 
                     <Grid>
 
@@ -72,7 +72,7 @@
 
                                 Command="{Binding CloseMotorDetailsCommand}"
 
-                                Style="{StaticResource PlaybackIconButton}">
+                                Style="{DynamicResource PlaybackIconButton}">
 
                                 <materialDesign:PackIcon Kind="Close" Width="18" Height="18" />
 

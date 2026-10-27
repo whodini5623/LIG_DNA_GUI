@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using System.Windows.Media;
 using BroadcastControl.App.Models;
