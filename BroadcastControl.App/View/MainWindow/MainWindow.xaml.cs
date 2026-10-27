@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Globalization;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -22,14 +20,6 @@ namespace BroadcastControl.App;
 
 public partial class MainWindow : Window
 {
-    private enum DisplayRotation
-    {
-        None,
-        Rotate180,
-        RotateLeft90
-    }
-
-    private const double SettingsDrawerClosedOffset = 320;
     private const double WindowedWidth = 1600;
     private const double WindowedHeight = 900;
     private const int EoUdpPort = 6000;
@@ -38,8 +28,6 @@ public partial class MainWindow : Window
     private const int OverlayCacheLimit = 48;
     private const string DefaultRecordedVideoUrl = "http://192.168.3.143:8090/";
     private const string RecordedVideoCacheFolderName = "LIG_DNA_GUI_recorded_videos";
-    private const double RecordedVideoMiniMapWidth = 120;
-    private const double RecordedVideoMiniMapHeight = 62;
     private static readonly TimeSpan MobileAlertCooldown = TimeSpan.FromSeconds(10);
     private static readonly HttpClient RecordedVideoHttpClient = new();
     private readonly MainViewModel _viewModel;
@@ -51,26 +39,16 @@ public partial class MainWindow : Window
     private readonly MobileAlertHubService _mobileAlertHubService;
     private readonly JetsonBridgeSshService _jetsonBridgeSshService;
     private readonly DispatcherTimer _motorHoldTimer;
-    private readonly DispatcherTimer _recordedVideoPositionTimer;
     private readonly DispatcherTimer _recordingMetadataTimer;
 
     private bool _isFullscreenMode = true;
     private string? _lastStatusSignature;
-    private bool _hasRenderedDetectionOverlay;
-    private bool _isRenderingOverlay;
     private bool _isViewportRecordingActive;
-    private bool _isDraggingRecordedVideoPosition;
-    private bool _isDraggingRecordedVideoPan;
     private readonly List<RecordedVideoItem> _recordedVideoFiles = new();
     private string? _recordedVideoSelectedFolder;
-    private double _recordedVideoZoomLevel = 1.0;
-    private double _recordedVideoPanX;
-    private double _recordedVideoPanY;
-    private Point _lastRecordedVideoPanPoint;
     private string? _lastDetectionAlertSignature;
     private DateTimeOffset _lastMobileAlertAt = DateTimeOffset.MinValue;
     private DateTime _recordingMetadataWindowStart;
-    private string? _lastOverlaySignature;
     private readonly Dictionary<string, int> _activeMotorDirections = new(StringComparer.Ordinal);
     private readonly HashSet<Key> _pressedMotorKeys = new();
     private const uint OverlayFrameTolerance = 12;
@@ -139,7 +117,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        RecordedVideosView.UiAction += OnRecordedVideosUiAction;
+        RecordedVideosView.RefreshRequested += OnRefreshRecordedVideosRequested;
+        RecordedVideosView.VideoSelectionRequested += e =>
+            RecordedVideoList_OnSelectionChanged(RecordedVideosView.RecordedVideoList, e);
+        RecordedVideosView.PlaybackFailed += OnRecordedVideoPlaybackFailed;
         SettingsDrawerView.WindowModeToggleRequested += WindowModeToggleButton_OnClick;
 
         CameraWorkspace.OverlayRefreshRequested += OnMiddleOverlayRefreshRequested;
@@ -163,11 +144,6 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(50)
         };
         _motorHoldTimer.Tick += MotorHoldTimer_OnTick;
-        _recordedVideoPositionTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
-        _recordedVideoPositionTimer.Tick += RecordedVideoPositionTimer_OnTick;
         _recordingMetadataTimer = new DispatcherTimer
         {
             Interval = TimeSpan.FromMinutes(1)
@@ -184,7 +160,7 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Maximized;
-        UpdateWindowModeButtonText();
+        SettingsDrawerView.UpdateWindowModeButtonText(_isFullscreenMode);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.ManualAnalysisSaveRequested += ViewModel_OnManualAnalysisSaveRequested;
@@ -207,14 +183,13 @@ public partial class MainWindow : Window
         _motorStatusReceiverService.Start();
         _viewModel.AppendImportantLog($"모터 상태 수신 대기 포트: {_motorStatusReceiverService.Port}");
 
-        _viewModel.UpdateViewportSize(CameraWorkspace.CameraViewport.ActualWidth, CameraWorkspace.CameraViewport.ActualHeight);
         UpdateRecordingViewportState();
         RenderDetectionOverlay();
         UpdateMotorAutomationState();
         _recordingMetadataWindowStart = DateTime.Now;
         _recordingMetadataTimer.Start();
 
-        AnimateSettingsDrawer(_viewModel.IsSettingsOpen, animate: false);
+        SettingsDrawerView.SetOpenState(_viewModel.IsSettingsOpen, animate: false);
         await _jetsonBridgeSshService.StartAsync();
 
         if (_eoUdpCaptureService.Start(EoUdpPort))
@@ -261,17 +236,8 @@ public partial class MainWindow : Window
                 HandleRecordingActiveStateChanged();
                 break;
 
-            case nameof(MainViewModel.ZoomLevel):
-            case nameof(MainViewModel.ZoomTransformX):
-            case nameof(MainViewModel.ZoomTransformY):
-            case nameof(MainViewModel.IsEoPrimary):
-            case nameof(MainViewModel.SelectedPrimaryTarget):
-                UpdateRecordingViewportState();
-                RenderDetectionOverlay(forceRefresh: true);
-                break;
-
             case nameof(MainViewModel.IsSettingsOpen):
-                AnimateSettingsDrawer(_viewModel.IsSettingsOpen, animate: true);
+                SettingsDrawerView.SetOpenState(_viewModel.IsSettingsOpen, animate: true);
                 break;
 
             case nameof(MainViewModel.CurrentMode):
@@ -281,7 +247,7 @@ public partial class MainWindow : Window
 
             case nameof(MainViewModel.IsEnglishLanguage):
             case nameof(MainViewModel.IsKoreanLanguage):
-                UpdateWindowModeButtonText();
+                SettingsDrawerView.UpdateWindowModeButtonText(_isFullscreenMode);
                 break;
         }
     }
@@ -351,173 +317,32 @@ public partial class MainWindow : Window
     }
     private void RenderDetectionOverlay(bool forceRefresh = false)
     {
-        if (_isRenderingOverlay)
+        var latestFrame = _viewModel.IsEoPrimary
+            ? _viewModel.LatestEoFrame
+            : _viewModel.LatestIrFrame;
+        if (latestFrame is null ||
+            !TryGetRenderableFrameAndDetection(out var frameToRender, out var detectionPacket))
         {
+            CameraWorkspace.DetectionOverlay.ClearOverlay();
             return;
         }
 
-        if (CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas is null)
+        var displayDetections = FilterDisplayDetections(detectionPacket.Detections);
+        if (displayDetections.Count == 0)
         {
+            CameraWorkspace.DetectionOverlay.ClearOverlay();
             return;
         }
 
-        _isRenderingOverlay = true;
-        try
-        {
-            CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas.Children.Clear();
-
-            var latestFrame = _viewModel.IsEoPrimary
-                ? _viewModel.LatestEoFrame
-                : _viewModel.LatestIrFrame;
-            if (latestFrame is null)
-            {
-                _lastOverlaySignature = null;
-                return;
-            }
-
-            if (!TryGetRenderableFrameAndDetection(out var frameToRender, out var detectionPacket))
-            {
-                _lastOverlaySignature = null;
-                return;
-            }
-
-            var displayDetections = FilterDisplayDetections(detectionPacket.Detections);
-            if (displayDetections.Count == 0)
-            {
-                _lastOverlaySignature = null;
-                return;
-            }
-
-            var rotation = GetCurrentDisplayRotation();
-            var originalSourceWidth = detectionPacket.Width > 0 ? detectionPacket.Width : frameToRender.Width;
-            var originalSourceHeight = detectionPacket.Height > 0 ? detectionPacket.Height : frameToRender.Height;
-            if (originalSourceWidth <= 0 || originalSourceHeight <= 0)
-            {
-                return;
-            }
-
-            var rotatedSourceWidth = GetRotatedWidth(originalSourceWidth, originalSourceHeight, rotation);
-            var rotatedSourceHeight = GetRotatedHeight(originalSourceWidth, originalSourceHeight, rotation);
-            var rotatedDetections = displayDetections
-                .Select(d => RotateDetectionForDisplay(d, originalSourceWidth, originalSourceHeight, rotation))
-                .ToArray();
-
-            var overlaySignature = $"{rotation}:{BuildOverlaySignature(rotatedDetections)}";
-            if (!forceRefresh && string.Equals(_lastOverlaySignature, overlaySignature, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            _lastOverlaySignature = overlaySignature;
-
-            var viewportWidth = Math.Max(CameraWorkspace.CameraViewport.ActualWidth, 1);
-            var viewportHeight = Math.Max(CameraWorkspace.CameraViewport.ActualHeight, 1);
-            var baseScale = Math.Max(viewportWidth / rotatedSourceWidth, viewportHeight / rotatedSourceHeight);
-            var scaleX = baseScale;
-            var scaleY = baseScale;
-            var scaledWidth = rotatedSourceWidth * scaleX;
-            var scaledHeight = rotatedSourceHeight * scaleY;
-            var baseLeft = (viewportWidth - scaledWidth) / 2.0;
-            var baseTop = (viewportHeight - scaledHeight) / 2.0;
-
-            foreach (var detection in rotatedDetections)
-            {
-                var rectLeft = baseLeft + (detection.X1 * scaleX);
-                var rectTop = baseTop + (detection.Y1 * scaleY);
-                var rectWidth = Math.Max(2, (detection.X2 - detection.X1) * scaleX);
-                var rectHeight = Math.Max(2, (detection.Y2 - detection.Y1) * scaleY);
-
-                if (rectWidth < 2 || rectHeight < 2)
-                {
-                    continue;
-                }
-
-                AddDetectionVisualToCanvas(rectLeft, rectTop, rectWidth, rectHeight, detection);
-            }
-
-            if (!_hasRenderedDetectionOverlay)
-            {
-                _hasRenderedDetectionOverlay = true;
-            }
-        }
-        finally
-        {
-            _isRenderingOverlay = false;
-        }
+        var sourceWidth = detectionPacket.Width > 0 ? detectionPacket.Width : frameToRender.Width;
+        var sourceHeight = detectionPacket.Height > 0 ? detectionPacket.Height : frameToRender.Height;
+        CameraWorkspace.DetectionOverlay.RenderDetections(
+            displayDetections,
+            sourceWidth,
+            sourceHeight,
+            forceRefresh);
     }
 
-    private DisplayRotation GetCurrentDisplayRotation()
-    {
-        return DisplayRotation.None;
-    }
-
-    private static string BuildOverlaySignature(IReadOnlyList<DetectionInfo> detections)
-    {
-        return string.Join(
-            "|",
-            detections.Select(d => $"{d.ObjectId}:{d.ClassName}:{d.X1:0}:{d.Y1:0}:{d.X2:0}:{d.Y2:0}"));
-    }
-
-    private static int GetRotatedWidth(int sourceWidth, int sourceHeight, DisplayRotation rotation)
-    {
-        return rotation == DisplayRotation.RotateLeft90 ? sourceHeight : sourceWidth;
-    }
-
-    private static int GetRotatedHeight(int sourceWidth, int sourceHeight, DisplayRotation rotation)
-    {
-        return rotation == DisplayRotation.RotateLeft90 ? sourceWidth : sourceHeight;
-    }
-
-    private static DetectionInfo RotateDetectionForDisplay(
-        DetectionInfo detection,
-        int sourceWidth,
-        int sourceHeight,
-        DisplayRotation rotation)
-    {
-        return rotation switch
-        {
-            DisplayRotation.Rotate180 => new DetectionInfo(
-                detection.ClassName,
-                detection.Score,
-                (float)(sourceWidth - detection.X2),
-                (float)(sourceHeight - detection.Y2),
-                (float)(sourceWidth - detection.X1),
-                (float)(sourceHeight - detection.Y1),
-                detection.ObjectId),
-            DisplayRotation.RotateLeft90 => RotateDetectionLeft90(detection, sourceWidth),
-            _ => detection
-        };
-    }
-
-    private static DetectionInfo RotateDetectionLeft90(DetectionInfo detection, int sourceWidth)
-    {
-        var rotatedCorners = new[]
-        {
-            RotatePointLeft90(detection.X1, detection.Y1, sourceWidth),
-            RotatePointLeft90(detection.X2, detection.Y1, sourceWidth),
-            RotatePointLeft90(detection.X2, detection.Y2, sourceWidth),
-            RotatePointLeft90(detection.X1, detection.Y2, sourceWidth)
-        };
-
-        var x1 = rotatedCorners.Min(point => point.X);
-        var y1 = rotatedCorners.Min(point => point.Y);
-        var x2 = rotatedCorners.Max(point => point.X);
-        var y2 = rotatedCorners.Max(point => point.Y);
-
-        return new DetectionInfo(
-            detection.ClassName,
-            detection.Score,
-            (float)x1,
-            (float)y1,
-            (float)x2,
-            (float)y2,
-            detection.ObjectId);
-    }
-
-    private static Point RotatePointLeft90(double x, double y, int sourceWidth)
-    {
-        return new Point(y, sourceWidth - x);
-    }
     private static void TrimCache<T>(Dictionary<uint, T> cache)
     {
         while (cache.Count > OverlayCacheLimit)
@@ -571,90 +396,6 @@ public partial class MainWindow : Window
             return null;
         }
     }
-    private void AddDetectionVisualToCanvas(
-        double rectLeft,
-        double rectTop,
-        double rectWidth,
-        double rectHeight,
-        DetectionInfo detection)
-    {
-        var accentBrush = new SolidColorBrush(Color.FromRgb(105, 255, 132));
-        accentBrush.Freeze();
-        var mainRectangle = new Rectangle
-        {
-            Width = rectWidth,
-            Height = rectHeight,
-            Stroke = accentBrush,
-            StrokeThickness = 2,
-            RadiusX = 2,
-            RadiusY = 2,
-            Fill = Brushes.Transparent
-        };
-        Canvas.SetLeft(mainRectangle, rectLeft);
-        Canvas.SetTop(mainRectangle, rectTop);
-        CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas.Children.Add(mainRectangle);
-
-        var cornerLength = Math.Max(12, Math.Min(rectWidth, rectHeight) * 0.18);
-        AddCornerToCanvas(rectLeft, rectTop, cornerLength, true, true, accentBrush);
-        AddCornerToCanvas(rectLeft + rectWidth, rectTop, cornerLength, false, true, accentBrush);
-        AddCornerToCanvas(rectLeft, rectTop + rectHeight, cornerLength, true, false, accentBrush);
-        AddCornerToCanvas(rectLeft + rectWidth, rectTop + rectHeight, cornerLength, false, false, accentBrush);
-
-        var labelText = new TextBlock
-        {
-            Text = detection.LabelText,
-            Foreground = accentBrush,
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold
-        };
-
-        labelText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var labelWidth = labelText.DesiredSize.Width;
-        var labelHeight = labelText.DesiredSize.Height;
-        var labelLeft = Math.Max(0, Math.Min(rectLeft, Math.Max(0, CameraWorkspace.CameraViewport.ActualWidth - labelWidth - 4)));
-        var preferredTop = rectTop - labelHeight - 6;
-        var labelTop = preferredTop >= 0 ? preferredTop : Math.Min(CameraWorkspace.CameraViewport.ActualHeight - labelHeight - 4, rectTop + 6);
-        Canvas.SetLeft(labelText, labelLeft);
-        Canvas.SetTop(labelText, Math.Max(0, labelTop));
-        CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas.Children.Add(labelText);
-    }
-
-    private void AddCornerToCanvas(
-        double anchorX,
-        double anchorY,
-        double length,
-        bool isLeft,
-        bool isTop,
-        Brush strokeBrush)
-    {
-        var horizontal = new Line
-        {
-            X1 = anchorX,
-            Y1 = anchorY,
-            X2 = anchorX + (isLeft ? length : -length),
-            Y2 = anchorY,
-            Stroke = strokeBrush,
-            StrokeThickness = 3,
-            StrokeStartLineCap = PenLineCap.Square,
-            StrokeEndLineCap = PenLineCap.Square
-        };
-
-        var vertical = new Line
-        {
-            X1 = anchorX,
-            Y1 = anchorY,
-            X2 = anchorX,
-            Y2 = anchorY + (isTop ? length : -length),
-            Stroke = strokeBrush,
-            StrokeThickness = 3,
-            StrokeStartLineCap = PenLineCap.Square,
-            StrokeEndLineCap = PenLineCap.Square
-        };
-
-        CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas.Children.Add(horizontal);
-        CameraWorkspace.DetectionOverlay.DetectionOverlayCanvas.Children.Add(vertical);
-    }
-
     private void HandleRecordingActiveStateChanged()
     {
         if (_viewModel.IsRecordingActive)
@@ -694,52 +435,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnRecordedVideosUiAction(string action, object? sender, RoutedEventArgs e)
+    private void OnRecordedVideoPlaybackFailed(Exception exception)
     {
-        switch (action)
-        {
-            case nameof(RefreshRecordedVideosButton_OnClick): RefreshRecordedVideosButton_OnClick(sender!, e); break;
-            case nameof(CloseRecordedVideosButton_OnClick): CloseRecordedVideosButton_OnClick(sender!, e); break;
-            case nameof(RecordedVideoList_OnSelectionChanged): RecordedVideoList_OnSelectionChanged(sender!, (SelectionChangedEventArgs)e); break;
-            case nameof(RecordedVideoViewport_OnMouseWheel): RecordedVideoViewport_OnMouseWheel(sender!, (MouseWheelEventArgs)e); break;
-            case nameof(RecordedVideoViewport_OnMouseLeftButtonDown): RecordedVideoViewport_OnMouseLeftButtonDown(sender!, (MouseButtonEventArgs)e); break;
-            case nameof(RecordedVideoViewport_OnMouseMove): RecordedVideoViewport_OnMouseMove(sender!, (MouseEventArgs)e); break;
-            case nameof(RecordedVideoViewport_OnMouseLeftButtonUp): RecordedVideoViewport_OnMouseLeftButtonUp(sender!, (MouseButtonEventArgs)e); break;
-            case nameof(RecordedVideoPlayer_OnMediaOpened): RecordedVideoPlayer_OnMediaOpened(sender!, e); break;
-            case nameof(RecordedVideoPlayer_OnMediaEnded): RecordedVideoPlayer_OnMediaEnded(sender!, e); break;
-            case nameof(RecordedVideoPlayer_OnMediaFailed): RecordedVideoPlayer_OnMediaFailed(sender!, (ExceptionRoutedEventArgs)e); break;
-            case nameof(RecordedVideoPositionSlider_OnValueChanged): RecordedVideoPositionSlider_OnValueChanged(sender!, (RoutedPropertyChangedEventArgs<double>)e); break;
-            case nameof(RecordedVideoPositionSlider_OnPreviewMouseLeftButtonDown): RecordedVideoPositionSlider_OnPreviewMouseLeftButtonDown(sender!, (MouseButtonEventArgs)e); break;
-            case nameof(RecordedVideoPositionSlider_OnPreviewMouseLeftButtonUp): RecordedVideoPositionSlider_OnPreviewMouseLeftButtonUp(sender!, (MouseButtonEventArgs)e); break;
-            case nameof(RecordedVideoPlayButton_OnClick): RecordedVideoPlayButton_OnClick(sender!, e); break;
-            case nameof(RecordedVideoPauseButton_OnClick): RecordedVideoPauseButton_OnClick(sender!, e); break;
-            case nameof(RecordedVideoStopButton_OnClick): RecordedVideoStopButton_OnClick(sender!, e); break;
-            case nameof(RecordedVideoZoomResetButton_OnClick): RecordedVideoZoomResetButton_OnClick(sender!, e); break;
-            case nameof(RecordedVideoZoomSlider_OnValueChanged): RecordedVideoZoomSlider_OnValueChanged(sender!, (RoutedPropertyChangedEventArgs<double>)e); break;
-            case nameof(PlaybackSpeedCombo_OnSelectionChanged): PlaybackSpeedCombo_OnSelectionChanged(sender!, (SelectionChangedEventArgs)e); break;
-        }
+        _viewModel.AppendImportantLog($"녹화 영상 재생에 실패했습니다: {exception.Message}");
     }
 
     private async void OpenRecordedVideosButton_OnClick(object sender, RoutedEventArgs e)
     {
-        RecordedVideosView.RecordedVideosPanel.Visibility = Visibility.Visible;
+        RecordedVideosView.OpenPanel();
         await LoadRecordedVideosAsync();
         e.Handled = true;
     }
 
-    private async void RefreshRecordedVideosButton_OnClick(object sender, RoutedEventArgs e)
+    private async void OnRefreshRecordedVideosRequested()
     {
         await LoadRecordedVideosAsync();
-        e.Handled = true;
-    }
-
-    private void CloseRecordedVideosButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _recordedVideoPositionTimer.Stop();
-        RecordedVideosView.RecordedVideoPlayer.Stop();
-        RecordedVideosView.RecordedVideoPlayer.Source = null;
-        RecordedVideosView.RecordedVideosPanel.Visibility = Visibility.Collapsed;
-        e.Handled = true;
     }
 
     private async void RecordedVideoList_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -770,49 +480,17 @@ public partial class MainWindow : Window
 
         try
         {
-            _recordedVideoPositionTimer.Stop();
-            RecordedVideosView.RecordedVideoPlayer.Stop();
-            RecordedVideosView.RecordedVideoPlayer.Source = null;
-            ResetRecordedVideoPositionUi();
+            RecordedVideosView.PrepareVideoForDownload();
             RecordedVideosView.RecordedVideosStatusText.Text = $"{item.DisplayName} 내려받는 중...";
 
             var localPath = await EnsureRecordedVideoCachedAsync(item);
-            RecordedVideosView.RecordedVideoPlayer.Source = new Uri(localPath, UriKind.Absolute);
-            ResetRecordedVideoZoom();
-            ApplyRecordedVideoPlaybackSpeed();
-            RecordedVideosView.RecordedVideoPlayer.Play();
-            _recordedVideoPositionTimer.Start();
-            RecordedVideosView.RecordedVideosStatusText.Text = item.DisplayName;
+            RecordedVideosView.PlayCachedVideo(localPath, item.DisplayName);
         }
         catch (Exception ex)
         {
             RecordedVideosView.RecordedVideosStatusText.Text = "영상을 재생할 수 없습니다.";
             _viewModel.AppendImportantLog($"녹화 영상 재생 준비에 실패했습니다: {ex.Message}");
         }
-    }
-
-    private void RecordedVideoPlayButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        ApplyRecordedVideoPlaybackSpeed();
-        RecordedVideosView.RecordedVideoPlayer.Play();
-        _recordedVideoPositionTimer.Start();
-    }
-
-    private void RecordedVideoPauseButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        RecordedVideosView.RecordedVideoPlayer.Pause();
-    }
-
-    private void RecordedVideoStopButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        RecordedVideosView.RecordedVideoPlayer.Stop();
-        _recordedVideoPositionTimer.Stop();
-        ResetRecordedVideoPositionUi();
-    }
-
-    private void PlaybackSpeedCombo_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        ApplyRecordedVideoPlaybackSpeed();
     }
 
     private async Task LoadRecordedVideosAsync()
@@ -1018,281 +696,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyRecordedVideoPlaybackSpeed()
-    {
-        if (RecordedVideosView.PlaybackSpeedCombo?.SelectedItem is not ComboBoxItem item ||
-            item.Tag is not string value ||
-            !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var speed))
-        {
-            speed = 1.0;
-        }
-
-        RecordedVideosView.RecordedVideoPlayer.SpeedRatio = speed;
-    }
-
-    private void RecordedVideoPlayer_OnMediaOpened(object sender, RoutedEventArgs e)
-    {
-        if (RecordedVideosView.RecordedVideoPlayer.NaturalDuration.HasTimeSpan)
-        {
-            var duration = RecordedVideosView.RecordedVideoPlayer.NaturalDuration.TimeSpan;
-            RecordedVideosView.RecordedVideoPositionSlider.Maximum = Math.Max(duration.TotalSeconds, 1);
-            RecordedVideosView.RecordedVideoDurationText.Text = FormatVideoTime(duration);
-        }
-
-        UpdateRecordedVideoPositionUi();
-    }
-
-    private void RecordedVideoPlayer_OnMediaEnded(object sender, RoutedEventArgs e)
-    {
-        _recordedVideoPositionTimer.Stop();
-        UpdateRecordedVideoPositionUi();
-    }
-
-    private void RecordedVideoPlayer_OnMediaFailed(object sender, ExceptionRoutedEventArgs e)
-    {
-        _recordedVideoPositionTimer.Stop();
-        RecordedVideosView.RecordedVideosStatusText.Text = "영상을 재생할 수 없습니다.";
-        _viewModel.AppendImportantLog($"녹화 영상 재생에 실패했습니다: {e.ErrorException.Message}");
-    }
-
-    private void RecordedVideoPositionTimer_OnTick(object? sender, EventArgs e)
-    {
-        UpdateRecordedVideoPositionUi();
-    }
-
-    private void RecordedVideoPositionSlider_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        _isDraggingRecordedVideoPosition = true;
-    }
-
-    private void RecordedVideoPositionSlider_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        SeekRecordedVideoToSlider();
-        _isDraggingRecordedVideoPosition = false;
-    }
-
-    private void RecordedVideoPositionSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isDraggingRecordedVideoPosition)
-        {
-            RecordedVideosView.RecordedVideoCurrentTimeText.Text = FormatVideoTime(TimeSpan.FromSeconds(e.NewValue));
-        }
-    }
-
-    private void SeekRecordedVideoToSlider()
-    {
-        RecordedVideosView.RecordedVideoPlayer.Position = TimeSpan.FromSeconds(RecordedVideosView.RecordedVideoPositionSlider.Value);
-        UpdateRecordedVideoPositionUi();
-    }
-
-    private void UpdateRecordedVideoPositionUi()
-    {
-        if (_isDraggingRecordedVideoPosition)
-        {
-            return;
-        }
-
-        var position = RecordedVideosView.RecordedVideoPlayer.Position;
-        RecordedVideosView.RecordedVideoCurrentTimeText.Text = FormatVideoTime(position);
-
-        if (RecordedVideosView.RecordedVideoPlayer.NaturalDuration.HasTimeSpan)
-        {
-            var duration = RecordedVideosView.RecordedVideoPlayer.NaturalDuration.TimeSpan;
-            RecordedVideosView.RecordedVideoPositionSlider.Maximum = Math.Max(duration.TotalSeconds, 1);
-            RecordedVideosView.RecordedVideoDurationText.Text = FormatVideoTime(duration);
-        }
-
-        RecordedVideosView.RecordedVideoPositionSlider.Value = Math.Min(position.TotalSeconds, RecordedVideosView.RecordedVideoPositionSlider.Maximum);
-    }
-
-    private void ResetRecordedVideoPositionUi()
-    {
-        _isDraggingRecordedVideoPosition = false;
-        RecordedVideosView.RecordedVideoPositionSlider.Minimum = 0;
-        RecordedVideosView.RecordedVideoPositionSlider.Maximum = 1;
-        RecordedVideosView.RecordedVideoPositionSlider.Value = 0;
-        RecordedVideosView.RecordedVideoCurrentTimeText.Text = "00:00";
-        RecordedVideosView.RecordedVideoDurationText.Text = "00:00";
-    }
-
-    private void RecordedVideoViewport_OnMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        AdjustRecordedVideoZoom(e.Delta > 0 ? 0.1 : -0.1);
-        e.Handled = true;
-    }
-
-    private void RecordedVideoViewport_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_recordedVideoZoomLevel <= 1.0)
-        {
-            return;
-        }
-
-        _isDraggingRecordedVideoPan = true;
-        _lastRecordedVideoPanPoint = e.GetPosition(RecordedVideosView.RecordedVideoViewport);
-        RecordedVideosView.RecordedVideoViewport.CaptureMouse();
-        RecordedVideosView.RecordedVideoViewport.Cursor = Cursors.ScrollAll;
-        e.Handled = true;
-    }
-
-    private void RecordedVideoViewport_OnMouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_isDraggingRecordedVideoPan)
-        {
-            return;
-        }
-
-        var point = e.GetPosition(RecordedVideosView.RecordedVideoViewport);
-        _recordedVideoPanX += point.X - _lastRecordedVideoPanPoint.X;
-        _recordedVideoPanY += point.Y - _lastRecordedVideoPanPoint.Y;
-        _lastRecordedVideoPanPoint = point;
-        ClampRecordedVideoPan();
-        UpdateRecordedVideoZoomUi();
-    }
-
-    private void RecordedVideoViewport_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        StopRecordedVideoPanDrag();
-    }
-
-    private void RecordedVideoZoomSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (RecordedVideosView.RecordedVideoScaleTransform is null)
-        {
-            return;
-        }
-
-        SetRecordedVideoZoom(e.NewValue);
-    }
-
-    private void RecordedVideoZoomResetButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        ResetRecordedVideoZoom();
-    }
-
-    private void AdjustRecordedVideoZoom(double delta)
-    {
-        SetRecordedVideoZoom(_recordedVideoZoomLevel + delta);
-    }
-
-    private void SetRecordedVideoZoom(double value)
-    {
-        _recordedVideoZoomLevel = Math.Clamp(value, 1.0, 4.0);
-        if (_recordedVideoZoomLevel <= 1.0)
-        {
-            _recordedVideoPanX = 0;
-            _recordedVideoPanY = 0;
-            StopRecordedVideoPanDrag();
-        }
-
-        ClampRecordedVideoPan();
-        UpdateRecordedVideoZoomUi();
-    }
-
-    private void ResetRecordedVideoZoom()
-    {
-        _recordedVideoZoomLevel = 1.0;
-        _recordedVideoPanX = 0;
-        _recordedVideoPanY = 0;
-        StopRecordedVideoPanDrag();
-        UpdateRecordedVideoZoomUi();
-    }
-
-    private void StopRecordedVideoPanDrag()
-    {
-        if (!_isDraggingRecordedVideoPan)
-        {
-            return;
-        }
-
-        _isDraggingRecordedVideoPan = false;
-        RecordedVideosView.RecordedVideoViewport.ReleaseMouseCapture();
-        RecordedVideosView.RecordedVideoViewport.Cursor = Cursors.Arrow;
-    }
-
-    private void ClampRecordedVideoPan()
-    {
-        var maxPanX = GetRecordedVideoMaxPanX();
-        var maxPanY = GetRecordedVideoMaxPanY();
-        _recordedVideoPanX = Math.Clamp(_recordedVideoPanX, -maxPanX, maxPanX);
-        _recordedVideoPanY = Math.Clamp(_recordedVideoPanY, -maxPanY, maxPanY);
-    }
-
-    private double GetRecordedVideoMaxPanX()
-    {
-        return Math.Max(0, RecordedVideosView.RecordedVideoViewport.ActualWidth * (_recordedVideoZoomLevel - 1.0) / 2.0);
-    }
-
-    private double GetRecordedVideoMaxPanY()
-    {
-        return Math.Max(0, RecordedVideosView.RecordedVideoViewport.ActualHeight * (_recordedVideoZoomLevel - 1.0) / 2.0);
-    }
-
-    private void UpdateRecordedVideoZoomUi()
-    {
-        if (RecordedVideosView.RecordedVideoScaleTransform is null)
-        {
-            return;
-        }
-
-        RecordedVideosView.RecordedVideoScaleTransform.ScaleX = _recordedVideoZoomLevel;
-        RecordedVideosView.RecordedVideoScaleTransform.ScaleY = _recordedVideoZoomLevel;
-        RecordedVideosView.RecordedVideoTranslateTransform.X = _recordedVideoPanX;
-        RecordedVideosView.RecordedVideoTranslateTransform.Y = _recordedVideoPanY;
-
-        if (RecordedVideosView.RecordedVideoZoomSlider is not null &&
-            Math.Abs(RecordedVideosView.RecordedVideoZoomSlider.Value - _recordedVideoZoomLevel) > 0.001)
-        {
-            RecordedVideosView.RecordedVideoZoomSlider.Value = _recordedVideoZoomLevel;
-        }
-
-        if (RecordedVideosView.RecordedVideoZoomResetButton is not null)
-        {
-            RecordedVideosView.RecordedVideoZoomResetButton.Content = $"x{_recordedVideoZoomLevel:0.00}";
-        }
-
-        UpdateRecordedVideoMiniMap();
-    }
-
-    private void UpdateRecordedVideoMiniMap()
-    {
-        if (RecordedVideosView.RecordedVideoZoomMiniMap is null || RecordedVideosView.RecordedVideoMiniMapViewport is null)
-        {
-            return;
-        }
-
-        if (_recordedVideoZoomLevel <= 1.0)
-        {
-            RecordedVideosView.RecordedVideoZoomMiniMap.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        RecordedVideosView.RecordedVideoZoomMiniMap.Visibility = Visibility.Visible;
-        var viewportWidth = RecordedVideoMiniMapWidth / _recordedVideoZoomLevel;
-        var viewportHeight = RecordedVideoMiniMapHeight / _recordedVideoZoomLevel;
-        RecordedVideosView.RecordedVideoMiniMapViewport.Width = viewportWidth;
-        RecordedVideosView.RecordedVideoMiniMapViewport.Height = viewportHeight;
-
-        var maxPanX = GetRecordedVideoMaxPanX();
-        var maxPanY = GetRecordedVideoMaxPanY();
-        var left = maxPanX <= 0
-            ? (RecordedVideoMiniMapWidth - viewportWidth) / 2
-            : (1.0 - ((_recordedVideoPanX + maxPanX) / (maxPanX * 2.0))) * (RecordedVideoMiniMapWidth - viewportWidth);
-        var top = maxPanY <= 0
-            ? (RecordedVideoMiniMapHeight - viewportHeight) / 2
-            : (1.0 - ((_recordedVideoPanY + maxPanY) / (maxPanY * 2.0))) * (RecordedVideoMiniMapHeight - viewportHeight);
-
-        Canvas.SetLeft(RecordedVideosView.RecordedVideoMiniMapViewport, left);
-        Canvas.SetTop(RecordedVideosView.RecordedVideoMiniMapViewport, top);
-    }
-
-    private static string FormatVideoTime(TimeSpan value)
-    {
-        return value.TotalHours >= 1
-            ? value.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture)
-            : value.ToString(@"mm\:ss", CultureInfo.InvariantCulture);
-    }
-
     private static async Task<string> EnsureRecordedVideoCachedAsync(RecordedVideoItem item)
     {
         var cacheDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), RecordedVideoCacheFolderName);
@@ -1319,14 +722,6 @@ public partial class MainWindow : Window
         var chars = fileName.Select(ch => invalidChars.Contains(ch) ? '_' : ch).ToArray();
         var sanitized = new string(chars);
         return string.IsNullOrWhiteSpace(sanitized) ? "recorded_video" : sanitized;
-    }
-
-    private void SettingsBackdrop_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (_viewModel.IsSettingsOpen)
-        {
-            _viewModel.IsSettingsOpen = false;
-        }
     }
 
     private void Button_Click(object sender, RoutedEventArgs e)
@@ -1363,19 +758,7 @@ public partial class MainWindow : Window
             _isFullscreenMode = true;
         }
 
-        UpdateWindowModeButtonText();
-    }
-
-    private void UpdateWindowModeButtonText()
-    {
-        if (SettingsDrawerView.WindowModeToggleButton is null)
-        {
-            return;
-        }
-
-        SettingsDrawerView.WindowModeToggleButton.Content = _isFullscreenMode
-            ? _viewModel.Text["WindowMode"]
-            : _viewModel.Text["FullscreenMode"];
+        SettingsDrawerView.UpdateWindowModeButtonText(_isFullscreenMode);
     }
 
     private void MotorButton_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1503,7 +886,12 @@ public partial class MainWindow : Window
         }
 
         SendActiveMotorButtons();
-        UpdateMotorPadButtonVisualStates();
+        CameraControlBar.UpdateMotorPadButtonVisualStates(
+            _activeMotorDirections.ContainsKey("Left"),
+            _activeMotorDirections.ContainsKey("Right"),
+            _activeMotorDirections.ContainsKey("Up"),
+            _activeMotorDirections.ContainsKey("Down"),
+            _activeMotorDirections.ContainsKey("Center"));
 
         if (_activeMotorDirections.Count > 0)
         {
@@ -1528,7 +916,12 @@ public partial class MainWindow : Window
         }
 
         SendActiveMotorButtons();
-        UpdateMotorPadButtonVisualStates();
+        CameraControlBar.UpdateMotorPadButtonVisualStates(
+            _activeMotorDirections.ContainsKey("Left"),
+            _activeMotorDirections.ContainsKey("Right"),
+            _activeMotorDirections.ContainsKey("Up"),
+            _activeMotorDirections.ContainsKey("Down"),
+            _activeMotorDirections.ContainsKey("Center"));
 
         if (_activeMotorDirections.Count == 0)
         {
@@ -1570,34 +963,12 @@ public partial class MainWindow : Window
         _motorHoldTimer.Stop();
         _activeMotorDirections.Clear();
         _pressedMotorKeys.Clear();
-        UpdateMotorPadButtonVisualStates();
-    }
-
-    private void UpdateMotorPadButtonVisualStates()
-    {
-        SetMotorPadButtonActive(CameraControlBar.MotorPadLeftButton, _activeMotorDirections.ContainsKey("Left"));
-        SetMotorPadButtonActive(CameraControlBar.MotorPadRightButton, _activeMotorDirections.ContainsKey("Right"));
-        SetMotorPadButtonActive(CameraControlBar.MotorPadUpButton, _activeMotorDirections.ContainsKey("Up"));
-        SetMotorPadButtonActive(CameraControlBar.MotorPadDownButton, _activeMotorDirections.ContainsKey("Down"));
-        SetMotorPadButtonActive(CameraControlBar.MotorPadCenterButton, _activeMotorDirections.ContainsKey("Center"));
-    }
-
-    private static void SetMotorPadButtonActive(Button? button, bool isActive)
-    {
-        if (button is null)
-        {
-            return;
-        }
-
-        if (!isActive)
-        {
-            button.ClearValue(Control.BackgroundProperty);
-            button.ClearValue(Control.BorderBrushProperty);
-            return;
-        }
-
-        button.Background = new SolidColorBrush(Color.FromRgb(0x36, 0x55, 0x64));
-        button.BorderBrush = new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99));
+        CameraControlBar.UpdateMotorPadButtonVisualStates(
+            _activeMotorDirections.ContainsKey("Left"),
+            _activeMotorDirections.ContainsKey("Right"),
+            _activeMotorDirections.ContainsKey("Up"),
+            _activeMotorDirections.ContainsKey("Down"),
+            _activeMotorDirections.ContainsKey("Center"));
     }
 
     private static bool TryMapKeyToMotorDirection(Key key, out string direction)
@@ -1652,73 +1023,10 @@ public partial class MainWindow : Window
         return buttons;
     }
 
-    private void AnimateSettingsDrawer(bool isOpen, bool animate)
-    {
-        if (!animate)
-        {
-            SettingsDrawerView.SettingsBackdrop.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
-            SettingsDrawerView.SettingsBackdrop.IsHitTestVisible = isOpen;
-            SettingsDrawerView.SettingsBackdrop.Opacity = isOpen ? 1.0 : 0.0;
-
-            SettingsDrawerView.SettingsDrawer.Visibility = isOpen ? Visibility.Visible : Visibility.Collapsed;
-            SettingsDrawerView.SettingsDrawer.Opacity = isOpen ? 1.0 : 0.0;
-            SettingsDrawerView.SettingsDrawerTransform.X = isOpen ? 0 : SettingsDrawerClosedOffset;
-            return;
-        }
-
-        var duration = TimeSpan.FromMilliseconds(isOpen ? 220 : 170);
-        var easing = new CubicEase
-        {
-            EasingMode = isOpen ? EasingMode.EaseOut : EasingMode.EaseIn
-        };
-
-        if (isOpen)
-        {
-            SettingsDrawerView.SettingsBackdrop.Visibility = Visibility.Visible;
-            SettingsDrawerView.SettingsBackdrop.IsHitTestVisible = true;
-            SettingsDrawerView.SettingsDrawer.Visibility = Visibility.Visible;
-        }
-
-        var backdropAnimation = new DoubleAnimation
-        {
-            To = isOpen ? 1.0 : 0.0,
-            Duration = duration,
-            EasingFunction = easing
-        };
-
-        var drawerOpacityAnimation = new DoubleAnimation
-        {
-            To = isOpen ? 1.0 : 0.0,
-            Duration = duration,
-            EasingFunction = easing
-        };
-
-        var drawerSlideAnimation = new DoubleAnimation
-        {
-            To = isOpen ? 0 : SettingsDrawerClosedOffset,
-            Duration = duration,
-            EasingFunction = easing
-        };
-
-        if (!isOpen)
-        {
-            drawerSlideAnimation.Completed += (_, _) =>
-            {
-                SettingsDrawerView.SettingsBackdrop.Visibility = Visibility.Collapsed;
-                SettingsDrawerView.SettingsBackdrop.IsHitTestVisible = false;
-                SettingsDrawerView.SettingsDrawer.Visibility = Visibility.Collapsed;
-            };
-        }
-
-        SettingsDrawerView.SettingsBackdrop.BeginAnimation(OpacityProperty, backdropAnimation, HandoffBehavior.SnapshotAndReplace);
-        SettingsDrawerView.SettingsDrawer.BeginAnimation(OpacityProperty, drawerOpacityAnimation, HandoffBehavior.SnapshotAndReplace);
-        SettingsDrawerView.SettingsDrawerTransform.BeginAnimation(TranslateTransform.XProperty, drawerSlideAnimation, HandoffBehavior.SnapshotAndReplace);
-    }
-
     private void OnClosed(object? sender, EventArgs e)
     {
         StopManualMotorInput();
-        _recordedVideoPositionTimer.Stop();
+        RecordedVideosView.PlaybackFailed -= OnRecordedVideoPlaybackFailed;
         _recordingMetadataTimer.Stop();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.ManualAnalysisSaveRequested -= ViewModel_OnManualAnalysisSaveRequested;

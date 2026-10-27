@@ -1,4 +1,5 @@
 using System.Windows;
+using System.ComponentModel;
 using System.Windows.Controls;
 using System.Windows.Input;
 using BroadcastControl.App.ViewModels;
@@ -14,7 +15,34 @@ public partial class CameraWorkspaceView : UserControl
     public event MouseButtonEventHandler? MotorButtonReleased;
     public event MouseEventHandler? MotorButtonExited;
 
-    public CameraWorkspaceView() => InitializeComponent();
+    public CameraWorkspaceView()
+    {
+        InitializeComponent();
+        DataContextChanged += CameraWorkspaceView_OnDataContextChanged;
+    }
+
+    private void CameraWorkspaceView_OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is INotifyPropertyChanged oldViewModel)
+            oldViewModel.PropertyChanged -= ViewModel_OnPropertyChanged;
+        if (e.NewValue is INotifyPropertyChanged newViewModel)
+            newViewModel.PropertyChanged += ViewModel_OnPropertyChanged;
+    }
+
+    private void ViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(MainViewModel.ZoomLevel):
+            case nameof(MainViewModel.ZoomTransformX):
+            case nameof(MainViewModel.ZoomTransformY):
+            case nameof(MainViewModel.IsEoPrimary):
+            case nameof(MainViewModel.SelectedPrimaryTarget):
+                OverlayRefreshRequested?.Invoke(this, EventArgs.Empty);
+                break;
+        }
+    }
+
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     private void CameraViewport_OnSizeChanged(object sender, SizeChangedEventArgs e)
