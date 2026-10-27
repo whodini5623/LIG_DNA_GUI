@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using BroadcastControl.App.Models;
 
 namespace BroadcastControl.App.Services;
 
@@ -98,20 +99,3 @@ public sealed class UdpMotorControlService : IDisposable
     }
 }
 
-public enum MotorPacketMode : byte
-{
-    Scan = 0,
-    Tracking = 1,
-    Manual = 2
-}
-
-[Flags]
-public enum MotorButtonMask : byte
-{
-    None = 0,
-    Left = 0x01,
-    Right = 0x02,
-    Up = 0x04,
-    Down = 0x08,
-    Center = 0x10
-}

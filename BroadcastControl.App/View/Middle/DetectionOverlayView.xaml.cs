@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
-using BroadcastControl.App.Services;
+using BroadcastControl.App.Models;
 
 namespace BroadcastControl.App.View.Middle;
 

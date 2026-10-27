@@ -10,6 +10,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using BroadcastControl.App.Models;
 using BroadcastControl.App.Services;
 using BroadcastControl.App.ViewModels;
 using System.Collections.Generic;
@@ -53,23 +54,6 @@ public partial class MainWindow : Window
     private readonly HashSet<Key> _pressedMotorKeys = new();
     private const uint OverlayFrameTolerance = 12;
     private const float DisplayScoreThreshold = 0.60f;
-    private sealed class RecordedVideoItem
-    {
-        public string Name { get; set; } = string.Empty;
-
-        public string Url { get; set; } = string.Empty;
-
-        public long SizeBytes { get; set; }
-
-        public string Folder { get; set; } = string.Empty;
-
-        public string DisplayName { get; set; } = string.Empty;
-
-        public bool IsFolder { get; set; }
-
-        public bool IsBack { get; set; }
-    }
-
     private static readonly HashSet<string> NonMilitaryTargetClasses = new(StringComparer.OrdinalIgnoreCase)
     {
         "chair",

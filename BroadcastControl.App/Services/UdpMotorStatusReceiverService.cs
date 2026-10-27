@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
+using BroadcastControl.App.Models;
 
 namespace BroadcastControl.App.Services;
 
@@ -129,23 +130,3 @@ public sealed class UdpMotorStatusReceiverService : IDisposable
     }
 }
 
-public readonly record struct MotorStatusSnapshot(
-    MotorStatusPacket Pan,
-    MotorStatusPacket? Tilt);
-
-public readonly record struct MotorStatusPacket(
-    byte HardwareErrorStatus,
-    byte PresentTemperature,
-    ushort PresentInputVoltageRaw,
-    ushort PresentPosition,
-    ushort PresentVelocity,
-    short PresentLoad,
-    short PresentPwm,
-    ushort GoalPosition,
-    ushort GoalVelocity,
-    byte Moving,
-    byte MovingStatus,
-    DateTime ReceivedAt)
-{
-    public double PresentInputVoltage => PresentInputVoltageRaw / 10.0;
-}

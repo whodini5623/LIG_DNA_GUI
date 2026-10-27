@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using BroadcastControl.App.Models;
 
 namespace BroadcastControl.App.Services;
 
@@ -575,11 +576,3 @@ public sealed class MobileAlertHubService : IDisposable
     }
 }
 
-public sealed record MobileAlertEvent(
-    string Id,
-    string CreatedAt,
-    string Title,
-    string VlmAnalysis,
-    string DetectionSummary,
-    string ThreatLevel,
-    string EvidenceUrl);

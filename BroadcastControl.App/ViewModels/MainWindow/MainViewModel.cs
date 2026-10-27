@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using BroadcastControl.App.Infrastructure;
+using BroadcastControl.App.Models;
 using BroadcastControl.App.Services;
 
 namespace BroadcastControl.App.ViewModels;
@@ -1756,41 +1757,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
-}
-
-/// <summary>
-/// 상황 분석 영역에 표시할 분석 문장 한 줄을 나타낸다.
-/// </summary>
-public sealed record AnalysisItem(string Time, string Message)
-{
-    public DateTime CreatedAt { get; init; } = DateTime.Now;
-}
-
-/// <summary>
-/// 시스템 로그 영역에 표시할 주요 상태 변경 항목 한 줄을 나타낸다.
-/// </summary>
-public sealed record SystemLogItem(string Time, string Message)
-{
-    public DateTime CreatedAt { get; init; } = DateTime.Now;
-}
-
-public enum MotorStepAxis
-{
-    Both,
-    Pan,
-    Tilt
-}
-
-public enum MotorStepMode
-{
-    Auto,
-    Manual
-}
-
-public enum UiLanguage
-{
-    English,
-    Korean
 }
 
 public sealed class LocalizedTextProvider : INotifyPropertyChanged
